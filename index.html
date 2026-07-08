@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sax Rush — Learn Alto Saxophone</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header>
+    <h1 id="app-title">Sax <span>Rush</span> 🎷</h1>
+    <div id="instruments">
+      <button data-inst="altosax">🎷 Alto Sax</button>
+      <button data-inst="trumpet">🎺 Trumpet</button>
+    </div>
+    <nav id="tabs">
+      <button data-tab="learn" class="active">🎯 Note Rush</button>
+      <button data-tab="chart">🖐 Fingering Chart</button>
+      <button data-tab="build">🎼 Track Builder</button>
+      <button data-tab="play">🎵 Play Songs</button>
+    </nav>
+  </header>
+
+  <!-- ============ TAB 1: Note learner ============ -->
+  <section id="tab-learn" class="tab active">
+    <p class="subtitle">Name the note before you lose your streak — written range of the <span id="ln-inst">alto saxophone</span></p>
+    <div class="scoreboard">
+      <div class="stat"><div class="value" id="ln-streak">0</div><div class="label">Streak</div></div>
+      <div class="stat"><div class="value" id="ln-best">0</div><div class="label">Best</div></div>
+      <div class="stat"><div class="value" id="ln-acc">–</div><div class="label">Accuracy</div></div>
+    </div>
+    <div class="staff-card">
+      <svg id="ln-staff" viewBox="0 0 1160 330" aria-label="Music staff with notes"></svg>
+    </div>
+    <div class="message" id="ln-message"></div>
+    <div class="keys" id="ln-keys"></div>
+    <p class="hint">Press the letter key (<kbd>A</kbd>–<kbd>G</kbd>) matching the highlighted note.
+      Green = correct, red = wrong (the right answer is shown). Press <kbd>Enter</kbd> for a fresh set.
+      Stuck? Hold <kbd>Shift</kbd> to peek at all the note names.</p>
+  </section>
+
+  <!-- ============ TAB 2: Fingering chart ============ -->
+  <section id="tab-chart" class="tab">
+    <p class="subtitle">Hover any note to see the fingering — click (or press <kbd>Space</kbd>) to hear it, arrow keys to step through</p>
+    <div class="chart-layout">
+      <div class="chart-left">
+        <div class="staff-card scroll-x" id="fc-scroll">
+          <svg id="fc-staff"></svg>
+        </div>
+        <div class="chart-controls">
+          <label class="check"><input type="checkbox" id="fc-toggle"> Naturals only</label>
+          <button class="btn" id="fc-play">🔊 Hear this note</button>
+        </div>
+      </div>
+      <aside class="fing-panel staff-card">
+        <div class="fing-name" id="fc-name">–</div>
+        <svg id="fc-diagram" viewBox="0 0 210 470"></svg>
+        <div class="fing-desc" id="fc-desc"></div>
+        <div class="fing-alt" id="fc-alt"></div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ============ TAB 3: Track builder ============ -->
+  <section id="tab-build" class="tab">
+    <p class="subtitle">Click a staff position to add a note (hover to preview) · click a placed note to delete it</p>
+    <div class="toolbar">
+      <div class="tool-group" id="tb-durs">
+        <button data-dur="w" title="Whole (4 beats)">𝅝</button>
+        <button data-dur="h" title="Half (2 beats)">𝅗𝅥</button>
+        <button data-dur="q" class="sel" title="Quarter (1 beat)">♩</button>
+        <button data-dur="e" title="Eighth (½ beat)">♪</button>
+      </div>
+      <div class="tool-group" id="tb-accs">
+        <button data-acc="b" title="Flat">♭</button>
+        <button data-acc="" class="sel" title="Natural">♮</button>
+        <button data-acc="#" title="Sharp">♯</button>
+      </div>
+      <div class="tool-group">
+        <button id="tb-rest" title="Insert rest">𝄽 Rest</button>
+        <button id="tb-undo" title="Remove last">↩ Undo</button>
+        <button id="tb-clear" title="Clear all">🗑 Clear</button>
+      </div>
+      <div class="tool-group grow">
+        <button id="tb-play" class="btn accent">▶ Play</button>
+        <input type="range" id="tb-tempo" min="60" max="180" value="100">
+        <span id="tb-tempo-val" class="dim">100 bpm</span>
+      </div>
+    </div>
+    <div class="staff-card scroll-x" id="tb-scroll">
+      <svg id="tb-staff"></svg>
+    </div>
+    <div class="dim" id="tb-stats"></div>
+    <div class="toolbar">
+      <input type="text" id="tb-name" placeholder="Track name…" maxlength="40">
+      <button class="btn" id="tb-save">💾 Save</button>
+      <select id="tb-load"></select>
+      <button class="btn" id="tb-delete">✕ Delete saved</button>
+    </div>
+  </section>
+
+  <!-- ============ TAB 4: Play mode ============ -->
+  <section id="tab-play" class="tab">
+    <div class="song-filters" id="pm-filters">
+      <input type="search" id="pm-search" placeholder="Search songs…">
+      <div class="chips" id="pm-levels">
+        <button data-level="" class="sel">All</button>
+        <button data-level="Beginner">Beginner</button>
+        <button data-level="Intermediate">Intermediate</button>
+        <button data-level="Advanced">Advanced</button>
+        <button data-level="Touhou">Touhou</button>
+        <button data-level="My Tracks">My Tracks</button>
+      </div>
+      <span class="dim" id="pm-count"></span>
+    </div>
+    <div id="pm-songs" class="song-grid"></div>
+
+    <div id="pm-stage" style="display:none">
+      <div class="stage-head">
+        <button class="btn" id="pm-back">← Songs</button>
+        <div class="stage-title" id="pm-title"></div>
+        <label id="pm-speed" class="dim">Speed
+          <select id="pm-speed-sel">
+            <option value="0.5">50%</option>
+            <option value="0.75">75%</option>
+            <option value="1" selected>100%</option>
+          </select>
+        </label>
+      </div>
+
+      <!-- Listen mode -->
+      <div id="pm-listen">
+        <div class="listen-controls">
+          <button class="btn" id="pm-pause">⏸ Pause</button>
+          <button class="btn" id="pm-mute">🔊 Sound: on</button>
+          <button class="btn" id="pm-loop">🔁 Loop: off</button>
+          <span class="dim">click any note to jump there</span>
+        </div>
+        <div class="chart-layout">
+          <div class="chart-left">
+            <div class="staff-card scroll-x" id="pm-scroll">
+              <svg id="pm-staff"></svg>
+            </div>
+          </div>
+          <aside class="fing-panel staff-card">
+            <div class="fing-name" id="pm-fing-name">–</div>
+            <svg id="pm-fing" viewBox="0 0 210 470"></svg>
+          </aside>
+        </div>
+        <div id="pm-listen-end" class="summary" style="display:none">
+          <div class="sum-line">Song finished 🎉</div>
+          <button class="btn accent" id="pm-again">↻ Play again</button>
+        </div>
+      </div>
+
+      <!-- Play-along mode -->
+      <div id="pm-game-wrap">
+        <div class="scoreboard">
+          <div class="stat"><div class="value" id="pm-score">0</div><div class="label">Score</div></div>
+          <div class="stat"><div class="value" id="pm-streak">0</div><div class="label">Streak</div></div>
+          <div class="stat"><div class="value" id="pm-progress">–</div><div class="label">Notes</div></div>
+        </div>
+        <div class="staff-card game-card">
+          <svg id="pm-game-staff" viewBox="0 0 1000 330"></svg>
+          <div class="count" id="pm-count"></div>
+          <div class="judge" id="pm-judge"></div>
+        </div>
+        <div class="keys" id="pm-keys"></div>
+        <p class="hint">Press the note's letter when it reaches the blue line. <kbd>Esc</kbd> to quit.</p>
+        <div id="pm-summary" class="summary" style="display:none">
+          <div id="pm-summary-body"></div>
+          <button class="btn accent" id="pm-replay">↻ Play again</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script src="js/theory.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/staff.js"></script>
+  <script src="js/fingering.js"></script>
+  <script src="js/songs.js"></script>
+  <script src="js/learner.js"></script>
+  <script src="js/chart.js"></script>
+  <script src="js/builder.js"></script>
+  <script src="js/player.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
