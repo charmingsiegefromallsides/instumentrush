@@ -5,7 +5,7 @@ window.SaxLearner = (() => {
   const Y_E4 = 200, FIRST_X = 150;
   let staff, notes = [], groups = [], current = 0;
   let streak = 0, best = 0, correct = 0, attempts = 0;
-  let roundOver = false, cheatOn = false;
+  let roundOver = false, cheatOn = false, labelsOn = false;
   let svg, active = false;
 
   const $ = id => document.getElementById(id);
@@ -38,6 +38,13 @@ window.SaxLearner = (() => {
         "font-weight": 700, class: "label", visibility: "hidden",
         "font-family": "inherit"
       }, g);
+      // Persistent learning label, sits just above the notehead (toggle-controlled).
+      const top = ST.el("text", {
+        x, y: staff.yOf(n.step) - 22, "text-anchor": "middle", "font-size": 18,
+        "font-weight": 700, class: "toplabel", fill: "var(--muted)",
+        visibility: labelsOn ? "visible" : "hidden", "font-family": "inherit"
+      }, g);
+      top.textContent = n.letter;
       return g;
     });
     setCaret(0);
@@ -85,6 +92,17 @@ window.SaxLearner = (() => {
         label.setAttribute("visibility", "hidden");
       }
     });
+  }
+
+  function setLabels(on) {
+    labelsOn = on;
+    groups.forEach(g => {
+      const t = g.querySelector(".toplabel");
+      if (t) t.setAttribute("visibility", on ? "visible" : "hidden");
+    });
+    const cb = $("ln-labels");
+    if (cb) cb.checked = on;
+    try { localStorage.setItem("saxtrainer.noteLabels", on ? "1" : "0"); } catch (e) {}
   }
 
   function answer(letter) {
@@ -159,6 +177,12 @@ window.SaxLearner = (() => {
     document.addEventListener("keyup", onKeyUp);
     window.addEventListener("blur", () => setCheat(false));
     SaxInstrument.onChange(() => newRound());
+    const cb = $("ln-labels");
+    if (cb) {
+      labelsOn = localStorage.getItem("saxtrainer.noteLabels") === "1";
+      cb.checked = labelsOn;
+      cb.addEventListener("change", () => setLabels(cb.checked));
+    }
     newRound();
     updateScoreboard(false);
   }
