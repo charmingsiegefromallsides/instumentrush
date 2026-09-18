@@ -52,18 +52,21 @@ window.SaxPlayer = (() => {
     const q = searchText.trim().toLowerCase();
     const shown = [...SaxSongs, ...userSongs()].filter(s =>
       (!filterLevel || s.level === filterLevel) &&
-      (!q || s.title.toLowerCase().includes(q)));
+      (!q || s.title.toLowerCase().includes(q)))
+      .sort(SaxRatings.cmp(s => s.id, s => s.title)); // highest rated first, then A→Z
     $("pm-count").textContent = `${shown.length} song${shown.length === 1 ? "" : "s"}`;
     for (const s of shown) {
       const card = document.createElement("div");
       card.className = "song-card";
       card.innerHTML = `
         <div class="song-title"></div>
+        <div class="card-stars"></div>
         <div class="song-meta"></div>
         <div class="song-actions">
           <button class="btn accent" data-act="listen">▶ Listen</button>
         </div>`;
       card.querySelector(".song-title").textContent = s.title;
+      card.querySelector(".card-stars").textContent = SaxRatings.stars(SaxRatings.get(s.id));
       // text, never markup: level/tempo/meter can come from localStorage
       card.querySelector(".song-meta").textContent = `${s.level} · ${Number(s.tempo)} bpm · ${Number(s.meter)}/4`;
       card.querySelector("[data-act=listen]").addEventListener("click", () => start(s, "listen"));
@@ -109,6 +112,7 @@ window.SaxPlayer = (() => {
     $("pm-game-wrap").style.display = m === "game" ? "" : "none";
     $("pm-speed").style.display = m === "game" ? "" : "none";
     $("pm-edit").style.display = m === "listen" ? "" : "none";
+    if ($("pm-rating")) SaxRatings.widget($("pm-rating"), s.id);
     $("pm-summary").style.display = "none";
     speed = +$("pm-speed-sel").value;
     spb = m === "listen" ? 60 / (s.tempo * listenSpeed) : 60 / (s.tempo * speed);
@@ -452,6 +456,7 @@ window.SaxPlayer = (() => {
     $("pm-stage").style.display = "none";
     $("pm-songs").style.display = "";
     $("pm-filters").style.display = "";
+    renderSongList(); // pick up any rating change in the ordering
   }
 
   function onKeyDown(ev) {

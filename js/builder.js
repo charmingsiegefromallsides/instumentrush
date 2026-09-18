@@ -39,6 +39,7 @@ window.SaxBuilder = (() => {
     let curDur = "q", curAcc = null;
     let ghostG = null, ghostStep = null;
     let playing = false, rafId = null, playIdx = -1;
+    let playT0 = 0, playSpb = 0.5, playEvents = [], playNext = 0; // live playback clock
     let editMode = false, selectedIdx = -1; // select mode is the default
     let history = []; // snapshots of `track` taken before each change, for undo
     let tempoValue = 100; // used when there is no tempo slider in the DOM
@@ -356,34 +357,35 @@ window.SaxBuilder = (() => {
       if (playing || !track.length) return;
       playing = true;
       if (el("play")) el("play").textContent = "⏸ Pause";
-      const spb = 60 / getTempo();
+      playSpb = 60 / getTempo();
       const from = selectedIdx >= 0 ? selectedIdx : 0; // resume from the selected note
-      const t0 = A.now() + 0.15;
+      playT0 = A.now() + 0.15;
       const events = [];
       let beat = 0;
       for (let i = from; i < track.length; i++) {
         events.push({ i, start: beat, end: beat + BEATS[track[i].dur] });
         beat += BEATS[track[i].dur];
       }
+      playEvents = events; playNext = 0;
       const total = beat;
       // Schedule audio just-in-time (~1s lookahead). Scheduling thousands of
       // notes up front floods the audio thread and Chrome goes silent on long
       // tracks (e.g. 3000-note MIDI arpeggios) while the visuals keep moving.
-      let nextSched = 0, lastIdx = -1;
+      let lastIdx = -1;
       const tick = () => {
         if (!playing) return;
         const now = A.now();
-        const cur = (now - t0) / spb;
-        while (nextSched < events.length) {
-          const e = events[nextSched];
-          const at = t0 + e.start * spb;
+        const cur = (now - playT0) / playSpb;
+        while (playNext < events.length) {
+          const e = events[playNext];
+          const at = playT0 + e.start * playSpb;
           if (at >= now + 1) break;
           const item = track[e.i];
           if (!item.rest && at >= now - 0.05) {
             const n = T.noteByName(item.name);
-            A.playNote(n.midi, { dur: Math.max(0.15, BEATS[item.dur] * spb * 0.92), when: Math.max(0, at - now) });
+            A.playNote(n.midi, { dur: Math.max(0.15, BEATS[item.dur] * playSpb * 0.92), when: Math.max(0, at - now) });
           }
-          nextSched++;
+          playNext++;
         }
         const ev = events.find(e => cur >= e.start && cur < e.end);
         const idx = ev ? ev.i : -1;
@@ -578,7 +580,18 @@ window.SaxBuilder = (() => {
       on("undo", "click", undo);
       on("clear", "click", clearAll);
       on("play", "click", () => playing ? stop() : play());
-      on("tempo", "input", () => { if (el("tempo-val")) el("tempo-val").textContent = el("tempo").value + " bpm"; });
+      on("tempo", "input", () => {
+        if (el("tempo-val")) el("tempo-val").textContent = el("tempo").value + " bpm";
+        if (!playing) return;
+        // change tempo live: keep the current beat, reschedule what's ahead
+        const now = A.now();
+        const cur = (now - playT0) / playSpb;
+        playSpb = 60 / getTempo();
+        playT0 = now - cur * playSpb;
+        A.stopAll();
+        playNext = playEvents.findIndex(e => e.end > cur);
+        if (playNext < 0) playNext = playEvents.length;
+      });
       on("save", "click", save);
       on("load", "change", ev => load(ev.target.value));
       on("delete", "click", removeSaved);

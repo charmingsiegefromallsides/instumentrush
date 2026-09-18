@@ -289,3 +289,17 @@ input[type=range] { accent-color: var(--accent); }
   .chart-layout { flex-direction: column; }
   .fing-panel { width: 100%; }
 }
+
+/* ---------- ratings ---------- */
+.stars { display: inline-flex; gap: 1px; align-items: center; }
+.stars .star {
+  font: inherit; font-size: 1.25rem; line-height: 1; padding: 0 1px;
+  background: none; border: none; cursor: pointer; color: #6b7086;
+  transition: color 0.1s, transform 0.05s;
+}
+.stars .star.on { color: #ffc93c; }
+.stars .star:hover { color: #ffd76a; transform: scale(1.15); }
+.card-stars { color: #ffc93c; letter-spacing: 1px; font-size: 0.85rem; white-space: nowrap; }
+.song-card .card-stars { margin: -2px 0 2px; }
+.mb-row .card-stars { flex: none; }
+.tempo-label { white-space: nowrap; }

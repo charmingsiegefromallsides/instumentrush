@@ -106,6 +106,34 @@ window.SaxMidiBuilder = (() => {
   }
 
   // ---------------- collection picker ----------------
+  // Mainline shooter games TH6–TH18, matched by the numbered folder in each
+  // file's path ("1 - Shooter Games/<n> - <name>/..."); decimal spin-off
+  // folders like 12.8 don't match an integer and are excluded.
+  const GAME_CHIPS = [
+    [6, "EoSD"], [7, "PCB"], [8, "IN"], [9, "PoFV"], [10, "MoF"], [11, "SA"], [12, "UFO"],
+    [13, "TD"], [14, "DDC"], [15, "LoLK"], [16, "HSFS"], [17, "WBWC"], [18, "UM"]
+  ];
+  let gameFilter = 0; // 0 = all games
+  const gameNo = row => { const m = /^1 - Shooter Games\/(\d+) - /.exec(row.p); return m ? +m[1] : 0; };
+
+  function renderGameChips() {
+    const wrap = $("mb-games");
+    if (!wrap) return;
+    wrap.innerHTML = "";
+    const mk = (label, no, title) => {
+      const b = document.createElement("button");
+      b.textContent = label; b.title = title;
+      b.classList.toggle("sel", gameFilter === no);
+      b.addEventListener("click", () => { gameFilter = no; renderGameChips(); renderPicker($("mb-search").value); });
+      wrap.appendChild(b);
+    };
+    mk("All", 0, "Every file in the collection");
+    for (const [no, abbr] of GAME_CHIPS) {
+      const full = (window.SaxMidiLib || []).find(r => gameNo(r) === no);
+      mk(abbr, no, full ? `TH${no} · ${full.g}` : `TH${no}`);
+    }
+  }
+
   function renderPicker(filter) {
     const wrap = $("mb-results");
     // word-based, punctuation-blind search: every typed word must appear
@@ -113,24 +141,29 @@ window.SaxMidiBuilder = (() => {
     // "Help me, ERINNNNNN!!")
     const norm = str => str.toLowerCase().replace(/[^a-z0-9À-￿]+/g, " ");
     const words = norm(filter || "").split(" ").filter(Boolean);
+    const cap = gameFilter ? 200 : 60; // a single game fits comfortably
     const rows = (window.SaxMidiLib || []).filter(r => {
+      if (gameFilter && gameNo(r) !== gameFilter) return false;
       if (!words.length) return true;
       const hay = " " + norm(r.t + " " + r.g) + " ";
       return words.every(w => hay.includes(w));
-    }).slice(0, 60);
+    }).sort(SaxRatings.cmp(r => "midi:" + r.p, r => r.t)) // highest rated first, then A→Z
+      .slice(0, cap);
     wrap.innerHTML = "";
     for (const r of rows) {
       const b = document.createElement("button");
       b.className = "mb-row";
-      b.innerHTML = `<span class="mb-t"></span><span class="mb-n"></span><span class="mb-g"></span>`;
+      b.innerHTML = `<span class="mb-t"></span><span class="card-stars"></span><span class="mb-n"></span><span class="mb-g"></span>`;
       b.querySelector(".mb-t").textContent = r.t;
+      b.querySelector(".card-stars").textContent = SaxRatings.stars(SaxRatings.get("midi:" + r.p));
       b.querySelector(".mb-n").textContent = r.n ? `${r.n} track${r.n === 1 ? "" : "s"}` : "";
       b.querySelector(".mb-g").textContent = r.g;
       b.addEventListener("click", () => loadMidi(r));
       wrap.appendChild(b);
     }
+    const chip = GAME_CHIPS.find(c => c[0] === gameFilter);
     $("mb-count").textContent = (window.SaxMidiLib || []).length
-      ? `${rows.length} shown${rows.length === 60 ? " (refine search)" : ""}`
+      ? `${rows.length} shown${chip ? " · " + chip[1] : ""}${rows.length === cap ? " (refine search)" : ""}`
       : "collection index not loaded";
   }
 
@@ -188,6 +221,8 @@ window.SaxMidiBuilder = (() => {
       $("mb-song-name").textContent = row.t;
       if (!$("mb-out-name").value) $("mb-out-name").value = row.t + " (my mix)";
       out.setTempo(parsed.bpm);
+      src.setTempo(parsed.bpm); // once per file — the slider then persists across its tracks
+      if ($("mb-rating")) SaxRatings.widget($("mb-rating"), "midi:" + row.p);
       renderTrackStrip();
       showTrack(0);
     } catch (e) {
@@ -202,6 +237,7 @@ window.SaxMidiBuilder = (() => {
     src.stop(); out.stop();
     $("mb-workspace").style.display = "none";
     $("mb-picker").style.display = "";
+    renderPicker($("mb-search").value); // reflect any rating change in the ordering
   }
 
   // ---------------- track strip + source view ----------------
@@ -240,7 +276,7 @@ window.SaxMidiBuilder = (() => {
     curTrack = i;
     document.querySelectorAll("#mb-tracks .mb-tab").forEach((t, k) => t.classList.toggle("sel", k === i));
     src.setBeatsPerBar(parsed.beatsPerBar); // bars follow the MIDI's time signature
-    src.loadSong(parsed.tracks[i].notes, parsed.bpm);
+    src.loadSong(parsed.tracks[i].notes); // keep whatever tempo the slider is at
     src.setCopied(parsed.tracks[i].copied || []); // restore this track's green bands
     updateLabel();
     showPos(-1);
@@ -382,6 +418,7 @@ window.SaxMidiBuilder = (() => {
     } });
     src.init(); out.init();
 
+    renderGameChips();
     renderPicker("");
     $("mb-search").addEventListener("input", e => renderPicker(e.target.value));
     $("mb-change").addEventListener("click", backToPicker);
