@@ -183,6 +183,78 @@
     hint.textContent = pressed.size ? "" : "no valves — shape the note with your lips";
   }
 
+  // ======================= GUITAR =======================
+  // Standard tuning, written pitch (guitar sounds an octave lower than
+  // written). Written open strings low→high: E3 A3 D4 G4 B4 E5.
+  const GTR_OPEN = [52, 57, 62, 67, 71, 76];
+  const GTR_STRING_NAMES = ["E", "A", "D", "G", "B", "e"];
+  const GTR_MAX_FRET = 15;
+
+  function gtrPositions(midi) {
+    const out = [];
+    for (let s = 0; s < 6; s++) {
+      const f = midi - GTR_OPEN[s];
+      if (f >= 0 && f <= GTR_MAX_FRET) out.push({ s, f });
+    }
+    // best position: lowest fret wins, open strings best of all
+    out.sort((a, b) => a.f - b.f || b.s - a.s);
+    return out;
+  }
+
+  function gtrDescribe(midi) {
+    const pos = gtrPositions(midi);
+    if (!pos.length) return "";
+    const word = p => p.f === 0
+      ? `${GTR_STRING_NAMES[p.s]} string open`
+      : `${GTR_STRING_NAMES[p.s]} string, fret ${p.f}`;
+    return word(pos[0]);
+  }
+
+  function gtrAlt(midi) {
+    const pos = gtrPositions(midi).slice(1, 3);
+    if (!pos.length) return "";
+    return "Also: " + pos.map(p => `${GTR_STRING_NAMES[p.s]} str fret ${p.f}`).join(" · ");
+  }
+
+  function gtrRender(svg, midi) {
+    svg.setAttribute("viewBox", "0 0 210 300");
+    svg.innerHTML = "";
+    const pos = gtrPositions(midi);
+    if (!pos.length) return;
+    // fret window: prefer 0-5, else slide to cover the best position
+    const bestF = pos[0].f;
+    const startF = bestF <= 5 ? 0 : bestF - 2;
+    const FRETS = 5;
+    const X0 = 45, XS = 26, Y0 = 60, YS = 42;
+    // strings (vertical, low E left)
+    for (let s = 0; s < 6; s++) {
+      el("line", { x1: X0 + s * XS, y1: Y0, x2: X0 + s * XS, y2: Y0 + FRETS * YS, stroke: "var(--keyline)", "stroke-width": s < 3 ? 2.2 : 1.4 }, svg);
+      const t = el("text", { x: X0 + s * XS, y: Y0 - 28, "text-anchor": "middle", "font-size": 12, "font-weight": 600, fill: "var(--muted)", "font-family": "inherit" }, svg);
+      t.textContent = GTR_STRING_NAMES[s];
+    }
+    // nut or start-fret marker
+    el("rect", { x: X0 - 3, y: Y0 - (startF === 0 ? 6 : 2), width: 5 * XS + 6, height: startF === 0 ? 6 : 2, fill: "var(--keyline)" }, svg);
+    for (let f = 1; f <= FRETS; f++) {
+      el("line", { x1: X0 - 3, y1: Y0 + f * YS, x2: X0 + 5 * XS + 3, y2: Y0 + f * YS, stroke: "var(--keyline)", "stroke-width": 1.2, opacity: 0.7 }, svg);
+      const t = el("text", { x: X0 - 22, y: Y0 + (f - 0.5) * YS, "font-size": 11, fill: "var(--muted)", "dominant-baseline": "central", "font-family": "inherit" }, svg);
+      t.textContent = startF + f;
+    }
+    // dots for every playable position of this note in the window
+    pos.forEach((p, i) => {
+      const isBest = i === 0;
+      const x = X0 + p.s * XS;
+      if (p.f === 0 && startF === 0) {
+        el("circle", { cx: x, cy: Y0 - 14, r: 7, fill: isBest ? "var(--accent)" : "none", stroke: isBest ? "var(--accent)" : "var(--keyline)", "stroke-width": 2 }, svg);
+      } else if (p.f > startF && p.f <= startF + FRETS) {
+        el("circle", { cx: x, cy: Y0 + (p.f - startF - 0.5) * YS, r: 11, fill: isBest ? "var(--accent)" : "var(--keyoff)", stroke: isBest ? "var(--accent)" : "var(--keyline)", "stroke-width": 2 }, svg);
+        if (!isBest) {
+          const t = el("text", { x, y: Y0 + (p.f - startF - 0.5) * YS, "text-anchor": "middle", "dominant-baseline": "central", "font-size": 10, fill: "var(--muted)", "font-family": "inherit" }, svg);
+          t.textContent = p.f;
+        }
+      }
+    });
+  }
+
   // ======================= REGISTRY =======================
   function buildRange(low, high) {
     const chromatic = [];
@@ -204,6 +276,13 @@
       alt: m => TR_ALTS[m] || "",
       synth: { mult: 5.0, max: 7500, wave2: "square" },
       ...buildRange(54, 84)
+    },
+    guitar: {
+      id: "guitar", label: "Guitar", emoji: "🎸", low: 52, high: 91,
+      render: gtrRender, describe: gtrDescribe, alt: gtrAlt,
+      positions: gtrPositions, stringNames: GTR_STRING_NAMES, openStrings: GTR_OPEN,
+      synth: { mult: 2.6, max: 4200, wave2: "triangle", pluck: true },
+      ...buildRange(52, 91)
     }
   };
 

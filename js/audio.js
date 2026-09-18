@@ -11,23 +11,32 @@ window.SaxAudio = (() => {
     return ctx;
   }
 
-  function playNote(midi, { dur = 0.5, when = 0, vel = 0.6 } = {}) {
+  function playNote(midi, { dur = 0.5, when = 0, vel = 0.6, synth = null } = {}) {
     try {
       const c = ensure();
       const t0 = c.currentTime + when;
       const f = SaxTheory.freq(midi);
-      const syn = (window.SaxInstrument && SaxInstrument.get().synth) || { mult: 3.2, max: 5200, wave2: "triangle" };
+      const syn = synth || (window.SaxInstrument && SaxInstrument.get().synth) || { mult: 3.2, max: 5200, wave2: "triangle" };
       const saw = c.createOscillator(); saw.type = "sawtooth"; saw.frequency.value = f;
       const tri = c.createOscillator(); tri.type = syn.wave2; tri.frequency.value = f;
       const filt = c.createBiquadFilter();
       filt.type = "lowpass"; filt.frequency.value = Math.min(f * syn.mult, syn.max); filt.Q.value = 1.1;
       const g = c.createGain();
       const peak = 0.22 * vel;
-      const relStart = Math.max(t0 + 0.05, t0 + dur - 0.07);
-      g.gain.setValueAtTime(0, t0);
-      g.gain.linearRampToValueAtTime(peak, t0 + 0.035);
-      g.gain.setValueAtTime(peak, relStart);
-      g.gain.linearRampToValueAtTime(0, t0 + dur);
+      if (syn.pluck) {
+        // plucked string: instant attack, exponential decay (capped by dur)
+        const decay = Math.min(Math.max(dur, 0.3), 1.6);
+        g.gain.setValueAtTime(0, t0);
+        g.gain.linearRampToValueAtTime(peak * 1.25, t0 + 0.008);
+        g.gain.exponentialRampToValueAtTime(0.001, t0 + decay);
+        dur = decay;
+      } else {
+        const relStart = Math.max(t0 + 0.05, t0 + dur - 0.07);
+        g.gain.setValueAtTime(0, t0);
+        g.gain.linearRampToValueAtTime(peak, t0 + 0.035);
+        g.gain.setValueAtTime(peak, relStart);
+        g.gain.linearRampToValueAtTime(0, t0 + dur);
+      }
       saw.connect(filt); tri.connect(filt);
       filt.connect(g).connect(c.destination);
       saw.start(t0); tri.start(t0);

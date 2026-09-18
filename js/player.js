@@ -30,14 +30,20 @@ window.SaxPlayer = (() => {
     let saved;
     try { saved = JSON.parse(localStorage.getItem("saxtrainer.tracks") || "{}"); }
     catch (e) { return []; }
-    return Object.entries(saved).map(([name, t]) => {
-      const items = Array.isArray(t) ? t : t.items;
-      return {
-        id: "user:" + name, title: name,
-        tempo: (!Array.isArray(t) && t.tempo) || 100, meter: 4, level: "My Tracks",
-        notes: items.map(it => it.rest ? [null, DUR_BEATS[it.dur]] : [it.name, DUR_BEATS[it.dur]])
-      };
-    });
+    const out = [];
+    for (const [name, t] of Object.entries(saved)) {
+      try { // a corrupted entry should be skipped, not take the whole tab down
+        const items = Array.isArray(t) ? t : (t && t.items);
+        if (!Array.isArray(items)) continue;
+        const tempo = Number(!Array.isArray(t) && t.tempo) || 100;
+        out.push({
+          id: "user:" + name, title: String(name),
+          tempo: Math.max(30, Math.min(300, tempo)), meter: 4, level: "My Tracks",
+          notes: items.map(it => it.rest ? [null, DUR_BEATS[it.dur] || 1] : [String(it.name), DUR_BEATS[it.dur] || 1])
+        });
+      } catch (e) { /* skip bad entry */ }
+    }
+    return out;
   }
 
   function renderSongList() {
@@ -53,11 +59,13 @@ window.SaxPlayer = (() => {
       card.className = "song-card";
       card.innerHTML = `
         <div class="song-title"></div>
-        <div class="song-meta">${s.level} · ${s.tempo} bpm · ${s.meter}/4</div>
+        <div class="song-meta"></div>
         <div class="song-actions">
           <button class="btn accent" data-act="listen">▶ Listen</button>
         </div>`;
       card.querySelector(".song-title").textContent = s.title;
+      // text, never markup: level/tempo/meter can come from localStorage
+      card.querySelector(".song-meta").textContent = `${s.level} · ${Number(s.tempo)} bpm · ${Number(s.meter)}/4`;
       card.querySelector("[data-act=listen]").addEventListener("click", () => start(s, "listen"));
       wrap.appendChild(card);
     }
@@ -100,9 +108,10 @@ window.SaxPlayer = (() => {
     $("pm-listen").style.display = m === "listen" ? "" : "none";
     $("pm-game-wrap").style.display = m === "game" ? "" : "none";
     $("pm-speed").style.display = m === "game" ? "" : "none";
+    $("pm-edit").style.display = m === "listen" ? "" : "none";
     $("pm-summary").style.display = "none";
     speed = +$("pm-speed-sel").value;
-    spb = 60 / (s.tempo * speed);
+    spb = m === "listen" ? 60 / (s.tempo * listenSpeed) : 60 / (s.tempo * speed);
     countIn = s.meter;
     score = 0; streak = 0; bestStreak = 0; hits = 0; perfects = 0; misses = 0;
     updateHud();
@@ -111,10 +120,29 @@ window.SaxPlayer = (() => {
       const r = renderSongStaff($("pm-staff"), s, tl);
       listenGroups = r.groups;
       // full-height click zone per note → seek there
+      const inst = SaxInstrument.get();
+      const showTab = inst.id === "guitar" && inst.positions;
       listenGroups.forEach((g, i) => {
         const ev = tl.events[i];
+        const x = FIRST_X + ev.start * PX_PER_BEAT;
+        // guitar tab lane: string letter over fret number under each note
+        if (showTab && ev.note) {
+          const p = inst.positions(ev.note.midi)[0];
+          if (p) {
+            const ts = ST.el("text", {
+              x, y: 310, "text-anchor": "middle", "font-size": 11,
+              fill: "var(--muted)", "font-family": "inherit"
+            }, g);
+            ts.textContent = inst.stringNames[p.s];
+            const tf = ST.el("text", {
+              x, y: 326, "text-anchor": "middle", "font-size": 15,
+              "font-weight": 700, fill: "var(--ink)", "font-family": "inherit"
+            }, g);
+            tf.textContent = p.f;
+          }
+        }
         ST.el("rect", {
-          x: FIRST_X + ev.start * PX_PER_BEAT - 14, y: 0,
+          x: x - 14, y: 0,
           width: Math.max(ev.beats * PX_PER_BEAT, 28), height: 330,
           fill: "transparent"
         }, g);
@@ -142,11 +170,69 @@ window.SaxPlayer = (() => {
   // mute, and loop take effect immediately instead of fighting a fully
   // pre-scheduled WebAudio queue.
   let listenPaused = false, listenMuted = false, listenLoop = false;
-  let pausedBeat = 0, nextNoteIdx = 0;
+  let pausedBeat = 0, nextNoteIdx = 0, listenSpeed = 1, listenIdx = -1;
 
   function firstEventAtOrAfter(beat) {
     const i = timeline.events.findIndex(e => e.start >= beat);
     return i < 0 ? timeline.events.length : i;
+  }
+
+  // Keep the current note centered once it passes mid-view; never scroll
+  // before the start (so the opening keeps its left-edge context).
+  function centerListen(beat) {
+    const wrap = $("pm-scroll");
+    const x = FIRST_X + beat * PX_PER_BEAT;
+    const target = Math.max(0, x - wrap.clientWidth / 2);
+    // smooth scrolling stalls in hidden tabs (rAF-driven) — fall back to instant
+    wrap.scrollTo({ left: target, behavior: document.visibilityState === "visible" ? "smooth" : "auto" });
+  }
+
+  // Single source of truth for the highlighted note: recolors staff, updates
+  // the fingering panel, and scrolls. Everything (playback, seek, arrows) goes
+  // through here so the shown note and the step reference never disagree.
+  function highlightListen(idx, { scroll = true } = {}) {
+    if (idx === listenIdx) return;
+    if (listenIdx >= 0 && listenGroups[listenIdx]) ST.setColor(listenGroups[listenIdx], "var(--ink)");
+    listenIdx = idx;
+    const ev = timeline.events[idx];
+    if (!ev) return;
+    ST.setColor(listenGroups[idx], "var(--accent)");
+    if (scroll) centerListen(ev.start);
+    if (ev.note) {
+      F.render($("pm-fing"), ev.note.midi);
+      $("pm-fing-name").textContent = ev.note.name;
+    } else {
+      $("pm-fing-name").textContent = "(rest)";
+    }
+  }
+
+  // Ctrl+←/→: jump to the start of the previous / next bar (song's meter).
+  function skipBarListen(dir) {
+    if (mode !== "listen" || !timeline.events || !timeline.events.length) return;
+    const bpb = (song && song.meter) || 4;
+    const cur = Math.floor(currentListenBeat() / bpb);
+    const lastBar = Math.floor(Math.max(0, timeline.total - 0.01) / bpb);
+    const target = Math.max(0, Math.min(lastBar, cur + dir));
+    if (target === cur && dir > 0) return; // already in the last bar
+    seekListen(target * bpb);
+  }
+
+  function currentListenBeat() {
+    if (listenPaused) return pausedBeat;
+    if (running) return (A.now() - t0) / spb;
+    const ev = timeline.events[listenIdx];
+    return ev ? ev.start : 0;
+  }
+
+  // ←/→: jump to the previous/next actual note (rests skipped), relative to
+  // the note currently highlighted on screen.
+  function stepListen(dir) {
+    if (mode !== "listen" || !timeline.events) return;
+    let i = listenIdx;
+    // find the next event in `dir` that carries a note
+    for (i += dir; i >= 0 && i < timeline.events.length; i += dir) {
+      if (timeline.events[i].note) { seekListen(timeline.events[i].start); return; }
+    }
   }
 
   function updateListenButtons() {
@@ -162,9 +248,8 @@ window.SaxPlayer = (() => {
     nextNoteIdx = firstEventAtOrAfter(fromBeat);
     $("pm-listen-end").style.display = "none";
     updateListenButtons();
-    $("pm-fing-name").textContent = "–";
+    if (fromBeat === 0) { $("pm-fing-name").textContent = "–"; listenIdx = -1; }
     t0 = A.now() + 0.2 - fromBeat * spb;
-    let lastIdx = -1;
     const tick = () => {
       if (!running || mode !== "listen") return;
       if (listenPaused) { rafId = A.raf(tick); return; }
@@ -183,32 +268,17 @@ window.SaxPlayer = (() => {
         }
         nextNoteIdx++;
       }
-      // highlight the sounding note + live fingering
       const idx = timeline.events.findIndex(e => cur >= e.start && cur < e.start + e.beats);
-      if (idx !== lastIdx) {
-        if (lastIdx >= 0) ST.setColor(listenGroups[lastIdx], "var(--ink)");
-        const ev = timeline.events[idx];
-        if (ev) {
-          ST.setColor(listenGroups[idx], "var(--accent)");
-          listenGroups[idx].scrollIntoView?.({ block: "nearest", inline: "center", behavior: "smooth" });
-          if (ev.note) {
-            F.render($("pm-fing"), ev.note.midi);
-            $("pm-fing-name").textContent = ev.note.name;
-          } else {
-            $("pm-fing-name").textContent = "(rest)";
-          }
-        }
-        lastIdx = idx;
-      }
+      if (idx >= 0) highlightListen(idx);
       if (cur < timeline.total + 1) {
         rafId = A.raf(tick);
       } else if (listenLoop) {
-        listenGroups.forEach(g => ST.setColor(g, "var(--ink)"));
+        if (listenIdx >= 0) ST.setColor(listenGroups[listenIdx], "var(--ink)");
+        listenIdx = -1;
         $("pm-scroll").scrollLeft = 0;
         startListenPlayback();
       } else {
         running = false;
-        if (lastIdx >= 0) ST.setColor(listenGroups[lastIdx], "var(--ink)");
         $("pm-listen-end").style.display = "";
       }
     };
@@ -229,27 +299,38 @@ window.SaxPlayer = (() => {
     updateListenButtons();
   }
 
-  // Click a note on the listen staff → jump playback to it
+  // Click a note (or arrow-step) on the listen staff → jump playback to it
   function seekListen(beat) {
     if (mode !== "listen") return;
     A.stopAll();
-    listenGroups.forEach(g => ST.setColor(g, "var(--ink)"));
-    if (!running) { startListenPlayback(beat); return; }
+    const i = timeline.events.findIndex(e => beat >= e.start && beat < e.start + e.beats);
+    if (!running) {
+      // song had ended — restart playback from the clicked note
+      startListenPlayback(beat);
+      if (i >= 0) highlightListen(i);
+      return;
+    }
     t0 = A.now() + 0.15 - beat * spb;
     nextNoteIdx = firstEventAtOrAfter(beat);
-    if (listenPaused) {
-      pausedBeat = beat;
-      // show the seek target while paused
-      const i = timeline.events.findIndex(e => beat >= e.start && beat < e.start + e.beats);
-      const ev = timeline.events[i];
-      if (ev) {
-        ST.setColor(listenGroups[i], "var(--accent)");
-        if (ev.note) {
-          F.render($("pm-fing"), ev.note.midi);
-          $("pm-fing-name").textContent = ev.note.name;
-        }
-      }
+    if (listenPaused) pausedBeat = beat;
+    if (i >= 0) highlightListen(i);
+  }
+
+  // ± playback speed; re-anchor the clock so the current position holds
+  function changeListenSpeed(delta) {
+    const next = Math.round(Math.max(30, Math.min(200, listenSpeed * 100 + delta * 100))) / 100;
+    if (next === listenSpeed) return;
+    const wasBeat = (mode === "listen" && (running || listenPaused)) ? currentListenBeat() : null;
+    listenSpeed = next;
+    $("pm-speed-val").textContent = Math.round(listenSpeed * 100) + "%";
+    if (mode !== "listen" || wasBeat === null) return;
+    spb = 60 / (song.tempo * listenSpeed);
+    if (running && !listenPaused) {
+      A.stopAll();
+      t0 = A.now() - wasBeat * spb;
+      nextNoteIdx = firstEventAtOrAfter(wasBeat);
     }
+    // paused: resume re-anchors from pausedBeat with the new spb on its own
   }
 
   function toggleListenMute() {
@@ -374,7 +455,23 @@ window.SaxPlayer = (() => {
   }
 
   function onKeyDown(ev) {
-    if (!active || ev.repeat || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    if (!active || ev.altKey) return;
+    if (ev.ctrlKey || ev.metaKey) {
+      if (mode === "listen" && ev.key === "ArrowRight") { skipBarListen(1); ev.preventDefault(); }
+      else if (mode === "listen" && ev.key === "ArrowLeft") { skipBarListen(-1); ev.preventDefault(); }
+      return;
+    }
+    if (mode === "listen") {
+      if (ev.key === "ArrowRight") { stepListen(1); ev.preventDefault(); return; }
+      if (ev.key === "ArrowLeft") { stepListen(-1); ev.preventDefault(); return; }
+      if (ev.key === " ") {
+        if (running) toggleListenPause();
+        else start(song, "listen"); // ended → replay from the top
+        ev.preventDefault();
+        return;
+      }
+    }
+    if (ev.repeat) return;
     const k = ev.key.toUpperCase();
     if (k === "ESCAPE") { if (mode) backToSongs(); return; }
     if (T.LETTERS.includes(k)) judge(k);
@@ -395,6 +492,14 @@ window.SaxPlayer = (() => {
     $("pm-mute").addEventListener("click", toggleListenMute);
     $("pm-loop").addEventListener("click", () => { listenLoop = !listenLoop; updateListenButtons(); });
     $("pm-again").addEventListener("click", () => start(song, "listen"));
+    $("pm-slower").addEventListener("click", () => changeListenSpeed(-0.1));
+    $("pm-faster").addEventListener("click", () => changeListenSpeed(0.1));
+    $("pm-edit").addEventListener("click", () => {
+      if (!song) return;
+      SaxBuilder.loadSong(song.notes, song.tempo, song.title);
+      backToSongs();
+      document.querySelector('#tabs button[data-tab="build"]').click();
+    });
     $("pm-speed-sel").addEventListener("change", () => { if (mode === "game") start(song, "game"); });
     document.addEventListener("keydown", onKeyDown);
     const keys = $("pm-keys");

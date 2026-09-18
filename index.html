@@ -2,9 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://raw.githubusercontent.com https://cdn.jsdelivr.net https://api.github.com; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sax Rush — Learn Alto Saxophone</title>
-<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/style.css?v=20260918f">
 </head>
 <body>
   <header>
@@ -12,11 +14,14 @@
     <div id="instruments">
       <button data-inst="altosax">🎷 Alto Sax</button>
       <button data-inst="trumpet">🎺 Trumpet</button>
+      <button data-inst="guitar">🎸 Guitar</button>
     </div>
     <nav id="tabs">
       <button data-tab="learn" class="active">🎯 Note Rush</button>
       <button data-tab="chart">🖐 Fingering Chart</button>
+      <button data-tab="scales">🎸 Scales</button>
       <button data-tab="build">🎼 Track Builder</button>
+      <button data-tab="midi">🎹 MIDI Mixer</button>
       <button data-tab="play">🎵 Play Songs</button>
     </nav>
   </header>
@@ -69,10 +74,35 @@
     </div>
   </section>
 
+  <!-- ============ TAB: Guitar scales ============ -->
+  <section id="tab-scales" class="tab">
+    <p class="subtitle">Beginner guitar scales — click any dot to hear it, or play the whole scale. Blue dots are the root notes.</p>
+    <div class="scales-layout">
+      <aside id="sc-list" class="scale-list"></aside>
+      <div class="scale-main">
+        <div class="scale-head">
+          <div>
+            <div class="fing-name" id="sc-name" style="color:#e8eaf2">–</div>
+            <div class="dim" id="sc-formula"></div>
+          </div>
+          <button class="btn accent" id="sc-play">▶ Play scale</button>
+        </div>
+        <div class="staff-card">
+          <svg id="sc-board"></svg>
+        </div>
+        <p class="scale-desc" id="sc-desc"></p>
+        <p class="dim" id="sc-tip"></p>
+      </div>
+    </div>
+  </section>
+
   <!-- ============ TAB 3: Track builder ============ -->
   <section id="tab-build" class="tab">
-    <p class="subtitle">Click a staff position to add a note (hover to preview) · click a placed note to delete it</p>
+    <p class="subtitle"><strong>Select mode</strong>: click a note to select it, then <kbd>↑</kbd>/<kbd>↓</kbd> to move its pitch. Press <kbd>C</kbd> (or the button) for <strong>Edit mode</strong>: click the staff to add notes, click a note to delete it. <kbd>Undo</kbd> reverses your last change.</p>
     <div class="toolbar">
+      <div class="tool-group">
+        <button id="tb-mode" class="btn" title="Toggle Select / Edit mode (shortcut: C)">🖱 Select mode</button>
+      </div>
       <div class="tool-group" id="tb-durs">
         <button data-dur="w" title="Whole (4 beats)">𝅝</button>
         <button data-dur="h" title="Half (2 beats)">𝅗𝅥</button>
@@ -107,6 +137,94 @@
     </div>
   </section>
 
+  <!-- ============ TAB: MIDI Mixer ============ -->
+  <section id="tab-midi" class="tab">
+    <p class="subtitle">Load a MIDI, audition each instrument track, and cherry-pick the best parts into your own track.</p>
+
+    <div id="mb-picker">
+      <div class="song-filters">
+        <input type="search" id="mb-search" placeholder="Search the MIDI collection…">
+        <span class="dim" id="mb-count"></span>
+      </div>
+      <div id="mb-results" class="mb-results"></div>
+    </div>
+
+    <div id="mb-workspace" style="display:none">
+      <div class="stage-head">
+        <button class="btn" id="mb-change">← Back to song search</button>
+        <div class="stage-title" id="mb-song-name"></div>
+      </div>
+
+      <!-- ===== Source: the MIDI's tracks (read-only Track Builder view) ===== -->
+      <div class="mb-section-title">MIDI tracks <span class="dim">— click a tab or <kbd>↑</kbd>/<kbd>↓</kbd> to switch (from the start) · <kbd>Ctrl</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> switch to the same bar &amp; note position (keeps playing) · <kbd>Ctrl</kbd>+<kbd>←</kbd>/<kbd>→</kbd> skip a bar · rename inline</span></div>
+      <div id="mb-tracks" class="mb-tabs"></div>
+      <div class="toolbar">
+        <div class="tool-group">
+          <button id="mb-src-play" class="btn accent" title="Play / pause this track (Space)">▶ Play</button>
+          <input type="range" id="mb-src-tempo" min="60" max="180" value="120">
+          <span id="mb-src-tempo-val" class="dim">120 bpm</span>
+        </div>
+        <div class="tool-group">
+          <button id="mb-cap-note" title="Copy the current note into your track (S)">S · copy note ↓</button>
+          <button id="mb-cap-bar" title="Copy the whole current bar into your track (D)">D · copy bar ↓</button>
+          <button id="mb-cap-track" title="Copy this entire track into your track (F)">F · copy track ↓</button>
+        </div>
+        <div class="tool-group grow">
+          <span class="dim" id="mb-track-label"></span>
+          <span class="pos" id="mb-pos" title="Current position (updates as it plays)"></span>
+          <span class="cap-msg" id="mb-cap-msg"></span>
+        </div>
+      </div>
+      <div class="staff-card scroll-x" id="mb-src-scroll">
+        <svg id="mb-src-staff"></svg>
+        <div class="judge" id="mb-flash">✓ copied</div>
+      </div>
+      <div class="dim" id="mb-src-stats"></div>
+
+      <!-- ===== Output: your custom track (a full Track Builder) ===== -->
+      <div class="mb-section-title" style="margin-top:22px">Your custom track <span class="dim">— works exactly like the Track Builder</span></div>
+      <div class="toolbar">
+        <div class="tool-group">
+          <button id="mb-out-mode" class="btn" title="Toggle Select / Edit mode (shortcut: C)">🖱 Select mode</button>
+        </div>
+        <div class="tool-group" id="mb-out-durs">
+          <button data-dur="w" title="Whole (4 beats)">𝅝</button>
+          <button data-dur="h" title="Half (2 beats)">𝅗𝅥</button>
+          <button data-dur="q" class="sel" title="Quarter (1 beat)">♩</button>
+          <button data-dur="e" title="Eighth (½ beat)">♪</button>
+        </div>
+        <div class="tool-group" id="mb-out-accs">
+          <button data-acc="b" title="Flat">♭</button>
+          <button data-acc="" class="sel" title="Natural">♮</button>
+          <button data-acc="#" title="Sharp">♯</button>
+        </div>
+        <div class="tool-group">
+          <button id="mb-out-rest" title="Insert rest">𝄽 Rest</button>
+          <button id="mb-out-undo" title="Undo last change (Backspace)">↩ Undo</button>
+          <button id="mb-out-clear" title="Clear all">🗑 Clear</button>
+        </div>
+        <div class="tool-group grow">
+          <button id="mb-out-play" class="btn accent">▶ Play</button>
+          <input type="range" id="mb-out-tempo" min="60" max="180" value="120">
+          <span id="mb-out-tempo-val" class="dim">120 bpm</span>
+        </div>
+      </div>
+      <div class="staff-card scroll-x" id="mb-out-scroll">
+        <svg id="mb-out-staff"></svg>
+      </div>
+      <div class="dim" id="mb-out-stats"></div>
+      <div class="toolbar">
+        <input type="text" id="mb-out-name" placeholder="Track name…" maxlength="60">
+        <button class="btn accent" id="mb-out-save">💾 Save to My Tracks</button>
+        <select id="mb-out-load"></select>
+        <button class="btn" id="mb-out-delete">✕ Delete saved</button>
+      </div>
+      <p class="hint"><kbd>Space</kbd> play/pause the MIDI track · <kbd>↑</kbd>/<kbd>↓</kbd> switch track from the start · <kbd>Ctrl</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> switch track to the same bar &amp; note within it (keeps playing) · <kbd>←</kbd>/<kbd>→</kbd> step notes · <kbd>Ctrl</kbd>+<kbd>←</kbd>/<kbd>→</kbd> previous/next bar · <kbd>S</kbd> copy note · <kbd>D</kbd> copy bar · <kbd>F</kbd> copy whole track · <kbd>⌫</kbd> undo. Notes you've copied get a green band.
+        Once you select a note in <em>your</em> track, the arrows edit it (↑/↓ pitch, ←/→ step) and <kbd>C</kbd> toggles Edit mode, just like the Track Builder.</p>
+    </div>
+    <div class="message" id="mb-status"></div>
+  </section>
+
   <!-- ============ TAB 4: Play mode ============ -->
   <section id="tab-play" class="tab">
     <div class="song-filters" id="pm-filters">
@@ -116,6 +234,7 @@
         <button data-level="Beginner">Beginner</button>
         <button data-level="Intermediate">Intermediate</button>
         <button data-level="Advanced">Advanced</button>
+        <button data-level="Simple">Simple</button>
         <button data-level="Touhou">Touhou</button>
         <button data-level="My Tracks">My Tracks</button>
       </div>
@@ -127,6 +246,7 @@
       <div class="stage-head">
         <button class="btn" id="pm-back">← Songs</button>
         <div class="stage-title" id="pm-title"></div>
+        <button class="btn" id="pm-edit" title="Copy this song into the Track Builder to edit and save as your own">✎ Edit a copy</button>
         <label id="pm-speed" class="dim">Speed
           <select id="pm-speed-sel">
             <option value="0.5">50%</option>
@@ -142,7 +262,12 @@
           <button class="btn" id="pm-pause">⏸ Pause</button>
           <button class="btn" id="pm-mute">🔊 Sound: on</button>
           <button class="btn" id="pm-loop">🔁 Loop: off</button>
-          <span class="dim">click any note to jump there</span>
+          <span class="speed-group">
+            <button class="btn" id="pm-slower" title="Slower (−10%)">−</button>
+            <span id="pm-speed-val">100%</span>
+            <button class="btn" id="pm-faster" title="Faster (+10%)">+</button>
+          </span>
+          <span class="dim">click a note or use <kbd>←</kbd>/<kbd>→</kbd> to step · <kbd>Ctrl</kbd>+<kbd>←</kbd>/<kbd>→</kbd> previous/next bar · scroll follows along</span>
         </div>
         <div class="chart-layout">
           <div class="chart-left">
@@ -183,15 +308,18 @@
     </div>
   </section>
 
-  <script src="js/theory.js"></script>
-  <script src="js/audio.js"></script>
-  <script src="js/staff.js"></script>
-  <script src="js/fingering.js"></script>
-  <script src="js/songs.js"></script>
-  <script src="js/learner.js"></script>
-  <script src="js/chart.js"></script>
-  <script src="js/builder.js"></script>
-  <script src="js/player.js"></script>
-  <script src="js/main.js"></script>
+  <script src="js/theory.js?v=20260918f"></script>
+  <script src="js/audio.js?v=20260918f"></script>
+  <script src="js/staff.js?v=20260918f"></script>
+  <script src="js/fingering.js?v=20260918f"></script>
+  <script src="js/songs.js?v=20260918f"></script>
+  <script src="js/scales.js?v=20260918f"></script>
+  <script src="js/learner.js?v=20260918f"></script>
+  <script src="js/chart.js?v=20260918f"></script>
+  <script src="js/builder.js?v=20260918f"></script>
+  <script src="js/midilib.js?v=20260918f"></script>
+  <script src="js/midibuilder.js?v=20260918f"></script>
+  <script src="js/player.js?v=20260918f"></script>
+  <script src="js/main.js?v=20260918f"></script>
 </body>
 </html>

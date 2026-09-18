@@ -133,6 +133,70 @@ kbd { background: #262a3a; border: 1px solid #3a3f55; border-radius: 4px; paddin
 .chart-controls { display: flex; gap: 16px; align-items: center; margin-top: 12px; }
 .check { color: var(--muted); font-size: 0.9rem; display: flex; gap: 6px; align-items: center; cursor: pointer; }
 
+/* ---------- guitar scales ---------- */
+.scales-layout { display: flex; gap: 16px; width: 100%; align-items: flex-start; }
+.scale-list { display: flex; flex-direction: column; gap: 6px; width: 240px; flex: none; }
+.scale-list button {
+  font: inherit; font-size: 0.88rem; font-weight: 600; text-align: left;
+  color: #cdd2e4; background: #20242f;
+  border: 1px solid #313650; border-radius: 10px;
+  padding: 10px 14px; cursor: pointer;
+}
+.scale-list button:hover { background: #2a2f42; }
+.scale-list button.sel { background: var(--accent); border-color: var(--accent); color: #fff; }
+.scale-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.scale-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.scale-desc { color: #cdd2e4; line-height: 1.55; font-size: 0.95rem; }
+#sc-board { width: 100%; height: auto; display: block; }
+@media (max-width: 820px) {
+  .scales-layout { flex-direction: column; }
+  .scale-list { width: 100%; flex-direction: row; flex-wrap: wrap; }
+}
+
+/* ---------- MIDI mixer ---------- */
+.mb-results { display: flex; flex-direction: column; gap: 4px; width: 100%; max-height: 460px; overflow-y: auto; }
+.mb-row {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+  font: inherit; text-align: left; color: #e8eaf2; background: #20242f;
+  border: 1px solid #313650; border-radius: 8px; padding: 9px 14px; cursor: pointer;
+}
+.mb-row:hover { background: #2a2f42; }
+.mb-row .mb-t { font-weight: 600; flex: 1; min-width: 0; }
+.mb-row .mb-n {
+  flex: none; font-size: 0.75rem; font-weight: 600; color: var(--accent);
+  border: 1px solid #3a4a7a; border-radius: 999px; padding: 2px 9px; white-space: nowrap;
+}
+.mb-row .mb-n:empty { display: none; }
+.mb-row .mb-g { color: var(--muted); font-size: 0.8rem; flex: none; }
+.cap-msg { color: #ffd479; font-size: 0.85rem; margin-left: 10px; }
+.pos { color: var(--accent); font-weight: 700; font-size: 0.9rem; margin-left: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* the wrappers must be full-width flex items, otherwise a very wide staff
+   svg inflates them (and the page) instead of scrolling inside its card */
+#mb-picker, #mb-workspace { width: 100%; }
+
+/* track strip: one renameable tab per MIDI track */
+.mb-section-title { width: 100%; font-weight: 700; margin: 4px 0 8px; }
+.mb-tabs { display: flex; gap: 6px; width: 100%; overflow-x: auto; padding-bottom: 6px; margin-bottom: 8px; }
+.mb-tab {
+  flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+  border: 1px solid #313650; border-radius: 10px; background: #20242f; cursor: pointer;
+}
+.mb-tab:hover { background: #2a2f42; }
+.mb-tab.sel { border-color: var(--accent); background: #262a3a; box-shadow: 0 0 0 1px var(--accent) inset; }
+.mb-tab-name {
+  width: 150px; font: inherit; font-size: 0.85rem; font-weight: 600;
+  background: #171a24; color: #e8eaf2; border: 1px solid #313650; border-radius: 6px; padding: 3px 7px;
+}
+.mb-tab.sel .mb-tab-name { border-color: var(--accent); }
+.mb-tab-meta { color: var(--muted); font-size: 0.72rem; white-space: nowrap; }
+#mb-src-scroll { position: relative; }
+#mb-out-name { font: inherit; padding: 8px 12px; border-radius: 8px; border: 1px solid #3a3f55; background: #20242f; color: #e8eaf2; width: 240px; }
+.mb-out { margin-top: 16px; color: var(--ink); }
+.mb-out-head { display: flex; justify-content: space-between; align-items: baseline; }
+.mb-out-list { margin-top: 8px; font-family: ui-monospace, monospace; font-size: 0.9rem; color: var(--ink); word-spacing: 2px; line-height: 1.7; min-height: 1.7em; max-height: 120px; overflow-y: auto; }
+#mb-scroll { position: relative; }
+@media (max-width: 820px) { .mb-layout { flex-direction: column; } .mb-tracklist { width: 100%; } }
+
 /* ---------- builder ---------- */
 .toolbar {
   display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
@@ -190,6 +254,9 @@ input[type=range] { accent-color: var(--accent); }
 
 #pm-stage { width: 100%; }
 .listen-controls { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+.speed-group { display: inline-flex; align-items: center; gap: 6px; }
+.speed-group .btn { width: 36px; padding: 8px 0; font-weight: 800; }
+#pm-speed-val { min-width: 48px; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; color: #cdd2e4; }
 .listen-controls button.sel { background: var(--accent); border-color: var(--accent); color: #fff; }
 #pm-listen-end { margin: 16px auto 0; }
 .stage-head { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; width: 100%; }

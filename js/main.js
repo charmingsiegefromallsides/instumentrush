@@ -3,7 +3,9 @@
   const MODULES = {
     learn: SaxLearner,
     chart: SaxChart,
+    scales: SaxScales,
     build: SaxBuilder,
+    midi: SaxMidiBuilder,
     play: SaxPlayer
   };
   let currentTab = null;
@@ -25,15 +27,20 @@
   window.addEventListener("hashchange", () => switchTab(location.hash.slice(1)));
 
   // ---- instrument switcher ----
-  const INSTRUMENT_NAMES = { altosax: "alto saxophone", trumpet: "trumpet" };
+  const INSTRUMENT_NAMES = { altosax: "alto saxophone", trumpet: "trumpet", guitar: "guitar" };
+  const BRANDS = {
+    altosax: ["Sax <span>Rush</span> 🎷", "Sax Rush"],
+    trumpet: ["Trumpet <span>Rush</span> 🎺", "Trumpet Rush"],
+    guitar: ["Guitar <span>Rush</span> 🎸", "Guitar Rush"]
+  };
   function updateInstrumentUI() {
     const inst = SaxInstrument.get();
     document.querySelectorAll("#instruments button").forEach(b =>
       b.classList.toggle("sel", b.dataset.inst === inst.id));
-    document.getElementById("app-title").innerHTML =
-      inst.id === "trumpet" ? "Trumpet <span>Rush</span> 🎺" : "Sax <span>Rush</span> 🎷";
+    const [html, plain] = BRANDS[inst.id] || BRANDS.altosax;
+    document.getElementById("app-title").innerHTML = html;
     document.getElementById("ln-inst").textContent = INSTRUMENT_NAMES[inst.id] || inst.label;
-    document.title = (inst.id === "trumpet" ? "Trumpet Rush" : "Sax Rush") + " — Learn to Play";
+    document.title = plain + " — Learn to Play";
   }
   document.querySelectorAll("#instruments button").forEach(b =>
     b.addEventListener("click", () => SaxInstrument.set(b.dataset.inst)));
