@@ -10,6 +10,18 @@
   };
   let currentTab = null;
 
+  // Hide what the instrument feature flag (SaxInstrument.enabled) turns off:
+  // disabled instruments' switcher buttons, and the guitar-only Scales tab.
+  document.querySelectorAll("#instruments button").forEach(b => {
+    if (!SaxInstrument.isEnabled(b.dataset.inst)) b.remove();
+  });
+  if (SaxInstrument.enabled.length < 2) document.getElementById("instruments").style.display = "none";
+  if (!SaxInstrument.isEnabled("guitar")) {
+    delete MODULES.scales;
+    document.querySelector('#tabs button[data-tab="scales"]')?.remove();
+    document.getElementById("tab-scales")?.remove();
+  }
+
   function switchTab(name) {
     if (!MODULES[name] || name === currentTab) return;
     if (currentTab) MODULES[currentTab].deactivate();

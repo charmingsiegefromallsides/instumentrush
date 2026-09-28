@@ -286,18 +286,25 @@
     }
   };
 
+  // FEATURE FLAG — instruments offered in the UI. Trumpet and guitar are
+  // defined below but not yet tested; add them back here to re-enable them
+  // (their switcher buttons, and the guitar-only Scales tab, follow this list).
+  const ENABLED = ["altosax"]; // e.g. ["altosax", "trumpet", "guitar"]
+
   const STORE = "saxtrainer.instrument";
   let currentId = localStorage.getItem(STORE);
-  if (!DEFS[currentId]) currentId = "altosax";
+  if (!DEFS[currentId] || !ENABLED.includes(currentId)) currentId = ENABLED[0];
   const listeners = [];
 
   window.SaxInstrument = {
     get: () => DEFS[currentId],
     currentId: () => currentId,
     ids: Object.keys(DEFS),
+    enabled: ENABLED.slice(),
+    isEnabled: id => ENABLED.includes(id),
     defs: DEFS,
     set(id) {
-      if (!DEFS[id] || id === currentId) return;
+      if (!DEFS[id] || !ENABLED.includes(id) || id === currentId) return;
       currentId = id;
       localStorage.setItem(STORE, id);
       listeners.forEach(f => { try { f(DEFS[id]); } catch (e) {} });
