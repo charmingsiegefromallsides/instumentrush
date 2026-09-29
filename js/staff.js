@@ -39,8 +39,37 @@ window.SaxStaff = (() => {
       return out;
     }
 
+    // Key signature after the clef: k sharps (k > 0) or flats (k < 0) at the
+    // standard treble positions. Returns the width used.
+    const SHARP_STEPS = [8, 5, 9, 6, 3, 7, 4]; // F5 C5 G5 D5 A4 E5 B4
+    const FLAT_STEPS = [4, 7, 3, 6, 2, 5, 1];  // B4 E5 A4 D5 G4 C5 F4
+    function drawKeySig(k, x0 = left + 58) {
+      const n = Math.min(7, Math.abs(k));
+      const steps = k > 0 ? SHARP_STEPS : FLAT_STEPS;
+      for (let i = 0; i < n; i++) {
+        const t = el("text", {
+          x: x0 + i * 10, y: yOf(steps[i]) + (k < 0 ? -3 : 0),
+          "text-anchor": "middle", "font-size": 26, fill: "var(--ink)",
+          "dominant-baseline": "central", class: "keysig",
+          "font-family": "'Segoe UI Symbol',serif"
+        }, svg);
+        t.textContent = k > 0 ? "♯" : "♭";
+      }
+      return n * 10;
+    }
+
+    const ACC_GLYPH = { "#": "♯", b: "♭", n: "♮" };
+    // Augmentation dot to the right of a head; sits in the space above a line
+    function drawDot(x, y, step, color, g) {
+      el("circle", { cx: x + 17, cy: step % 2 === 0 ? y - 5 : y, r: 2.6, fill: color, class: "dot" }, g);
+    }
+
     // Draws a note glyph; returns its <g>. Color is changeable later via setColor.
-    function drawNote(note, x, { dur = "q", color = "var(--ink)", parent = svg, ghost = false } = {}) {
+    // `key` (letter -> "#"/"b") hides accidentals the key signature already
+    // implies and shows a natural where the note cancels one.
+    // showAcc (optional) overrides which accidental is printed: "#", "b", "n" or null.
+    // stemUp (optional) forces the stem direction (used for beamed pairs).
+    function drawNote(note, x, { dur = "q", dot = false, key = null, showAcc, stemUp, color = "var(--ink)", parent = svg, ghost = false } = {}) {
       const g = el("g", { class: "note", "data-dur": dur }, parent);
       if (ghost) g.setAttribute("opacity", "0.45");
       const y = yOf(note.step);
@@ -52,15 +81,18 @@ window.SaxStaff = (() => {
         }, g);
       }
 
-      if (note.acc) {
+      const keyAcc = key ? (key[note.letter] || null) : null;
+      const shown = showAcc !== undefined ? showAcc : ((note.acc || null) === keyAcc ? null : (note.acc || "n"));
+      if (shown) {
         const t = el("text", {
-          x: x - 20, y: y + (note.acc === "b" ? -3 : 0),
+          x: x - 20, y: y + (shown === "b" ? -3 : 0),
           "text-anchor": "middle", "font-size": 26, fill: color,
           "dominant-baseline": "central", class: "acc",
           "font-family": "'Segoe UI Symbol',serif"
         }, g);
-        t.textContent = note.acc === "#" ? "♯" : "♭";
+        t.textContent = ACC_GLYPH[shown];
       }
+      if (dot) drawDot(x, y, note.step, color, g);
 
       if (dur === "w") {
         el("ellipse", { cx: x, cy: y, rx: 12, ry: 8.2, fill: color, class: "head" }, g);
@@ -76,7 +108,7 @@ window.SaxStaff = (() => {
           stroke: color, "stroke-width": hollow ? 2.6 : 0,
           class: "head", transform: `rotate(-20 ${x} ${y})`
         }, g);
-        const up = note.step < 4;
+        const up = stemUp !== undefined ? stemUp : note.step < 4;
         const sx = up ? x + 8.6 : x - 8.6;
         const sy2 = up ? y - 52 : y + 52;
         el("line", {
@@ -95,7 +127,7 @@ window.SaxStaff = (() => {
 
     // Rest glyphs from Segoe UI Symbol, drawn around the middle of the staff
     const REST_GLYPHS = { w: "\u{1D13B}", h: "\u{1D13C}", q: "\u{1D13D}", e: "\u{1D13E}" };
-    function drawRest(x, { dur = "q", color = "var(--muted)", parent = svg } = {}) {
+    function drawRest(x, { dur = "q", dot = false, color = "var(--muted)", parent = svg } = {}) {
       const g = el("g", { class: "rest", "data-dur": dur }, parent);
       const t = el("text", {
         x, y: yOf(4), "text-anchor": "middle", "font-size": 42, fill: color,
@@ -103,7 +135,30 @@ window.SaxStaff = (() => {
         "font-family": "'Segoe UI Symbol','Noto Music',serif"
       }, g);
       t.textContent = REST_GLYPHS[dur] || REST_GLYPHS.q;
+      if (dot) drawDot(x, yOf(5), 5, color, g);
       return g;
+    }
+
+    // Tie/slur arc between two note heads at x1 and x2 (steps give the side:
+    // below the heads when stems go up, above when they go down).
+    function drawTie(x1, x2, step, { parent = svg, color = "var(--ink)", up = step < 4 } = {}) {
+      const y = yOf(step);
+      const yy = up ? y + 11 : y - 11, c = up ? y + 26 : y - 26;
+      return el("path", {
+        d: `M ${x1 + 7} ${yy} Q ${(x1 + x2) / 2} ${c} ${x2 - 7} ${yy}`,
+        fill: "none", stroke: color, "stroke-width": 2.2, class: "tie"
+      }, parent);
+    }
+
+    // Replace the flags of two eighth-note groups with one beam (same stem direction only).
+    // Both notes must have been drawn with the same stemUp.
+    function beam(g1, g2, x1, x2, step1, step2, up) {
+      g1.querySelector(".flag")?.remove();
+      g2.querySelector(".flag")?.remove();
+      const sx1 = up ? x1 + 8.6 : x1 - 8.6, sx2 = up ? x2 + 8.6 : x2 - 8.6;
+      const ey1 = yOf(step1) + (up ? -52 : 52), ey2 = yOf(step2) + (up ? -52 : 52);
+      el("line", { x1: sx1, y1: ey1, x2: sx2, y2: ey2, stroke: "var(--ink)", "stroke-width": 5, class: "beam" }, g1);
+      return true;
     }
 
     function drawBarline(x, { parent = svg } = {}) {
@@ -113,7 +168,7 @@ window.SaxStaff = (() => {
       }, parent);
     }
 
-    return { svg, el, yOf, drawLines, drawNote, drawRest, drawBarline, ledgerSteps, left, right, yE4 };
+    return { svg, el, yOf, drawLines, drawKeySig, drawNote, drawRest, drawBarline, drawTie, beam, ledgerSteps, left, right, yE4 };
   }
 
   // Recolor a note group produced by drawNote
@@ -123,7 +178,7 @@ window.SaxStaff = (() => {
       if (parseFloat(head.getAttribute("stroke-width")) > 0) head.setAttribute("stroke", color);
       else head.setAttribute("fill", color);
     }
-    for (const cls of ["stem", "flag", "acc"]) {
+    for (const cls of ["stem", "flag", "acc", "dot"]) {
       const n = g.querySelector("." + cls);
       if (!n) continue;
       n.setAttribute(n.tagName === "line" ? "stroke" : "fill", color);

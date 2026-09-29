@@ -6,7 +6,7 @@
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sax Rush — Learn Alto Saxophone</title>
-<link rel="stylesheet" href="css/style.css?v=20260927a">
+<link rel="stylesheet" href="css/style.css?v=20260929b">
 </head>
 <body>
   <header>
@@ -98,7 +98,7 @@
 
   <!-- ============ TAB 3: Track builder ============ -->
   <section id="tab-build" class="tab">
-    <p class="subtitle"><strong>Select mode</strong>: click a note to select it, then <kbd>↑</kbd>/<kbd>↓</kbd> to move its pitch. Press <kbd>C</kbd> (or the button) for <strong>Edit mode</strong>: click the staff to add notes, click a note to delete it. <kbd>Undo</kbd> reverses your last change.</p>
+    <p class="subtitle"><strong>Select mode</strong>: click a note to select it, then <kbd>↑</kbd>/<kbd>↓</kbd> to move its pitch. Press <kbd>C</kbd> (or the button) for <strong>Edit mode</strong>: click the staff to add notes, click a note to delete it. <kbd>Undo</kbd> reverses your last change. <strong>•</strong> (<kbd>.</kbd>) dots a note, <strong>Tie</strong> (<kbd>T</kbd>) joins a note to the next one of the same pitch, and pairs of eighths beam together automatically. Pick a <strong>Key</strong> to get the key signature.</p>
     <div class="toolbar">
       <div class="tool-group">
         <button id="tb-mode" class="btn" title="Toggle Select / Edit mode (shortcut: C)">🖱 Select mode</button>
@@ -111,8 +111,19 @@
       </div>
       <div class="tool-group" id="tb-accs">
         <button data-acc="b" title="Flat">♭</button>
-        <button data-acc="" class="sel" title="Natural">♮</button>
+        <button data-acc="n" title="Natural: cancels a sharp or flat from the key signature. With none lit, notes follow the key.">♮</button>
         <button data-acc="#" title="Sharp">♯</button>
+      </div>
+      <div class="tool-group">
+        <button id="tb-dot" title="Dotted note: adds half its length (shortcut: .)">•</button>
+        <button id="tb-tie" title="Tie: joins the selected note to the next note of the same pitch (shortcut: T)">⁀ Tie</button>
+      </div>
+      <div class="tool-group">
+        <span class="dim" style="padding:0 4px">Key</span>
+        <select id="tb-key" title="Key signature"></select>
+      </div>
+      <div class="tool-group">
+        <button id="tb-fing-toggle" title="Show or hide the sax fingering for the selected or playing note">🎷 Fingering</button>
       </div>
       <div class="tool-group">
         <button id="tb-rest" title="Insert rest">𝄽 Rest</button>
@@ -126,10 +137,18 @@
         <span id="tb-tempo-val" class="dim">100 bpm</span>
       </div>
     </div>
-    <div class="staff-card scroll-x" id="tb-scroll">
-      <svg id="tb-staff"></svg>
+    <div class="chart-layout">
+      <div class="chart-left">
+        <div class="staff-card scroll-x" id="tb-scroll">
+          <svg id="tb-staff"></svg>
+        </div>
+        <div class="dim" id="tb-stats"></div>
+      </div>
+      <aside class="fing-panel staff-card" id="tb-fing">
+        <div class="fing-name" id="tb-fing-name">–</div>
+        <svg id="tb-fing-svg" viewBox="0 0 210 470"></svg>
+      </aside>
     </div>
-    <div class="dim" id="tb-stats"></div>
     <div class="toolbar">
       <input type="text" id="tb-name" placeholder="Track name…" maxlength="40">
       <button class="btn" id="tb-save">💾 Save</button>
@@ -201,8 +220,16 @@
         </div>
         <div class="tool-group" id="mb-out-accs">
           <button data-acc="b" title="Flat">♭</button>
-          <button data-acc="" class="sel" title="Natural">♮</button>
+          <button data-acc="n" title="Natural: cancels a sharp or flat from the key signature. With none lit, notes follow the key.">♮</button>
           <button data-acc="#" title="Sharp">♯</button>
+        </div>
+        <div class="tool-group">
+          <button id="mb-out-dot" title="Dotted note: adds half its length (shortcut: .)">•</button>
+          <button id="mb-out-tie" title="Tie: joins the selected note to the next note of the same pitch (shortcut: T)">⁀ Tie</button>
+        </div>
+        <div class="tool-group">
+          <span class="dim" style="padding:0 4px">Key</span>
+          <select id="mb-out-key" title="Key signature"></select>
         </div>
         <div class="tool-group">
           <button id="mb-out-rest" title="Insert rest">𝄽 Rest</button>
@@ -316,19 +343,19 @@
     </div>
   </section>
 
-  <script src="js/theory.js?v=20260927a"></script>
-  <script src="js/audio.js?v=20260927a"></script>
-  <script src="js/staff.js?v=20260927a"></script>
-  <script src="js/ratings.js?v=20260927a"></script>
-  <script src="js/fingering.js?v=20260927a"></script>
-  <script src="js/songs.js?v=20260927a"></script>
-  <script src="js/scales.js?v=20260927a"></script>
-  <script src="js/learner.js?v=20260927a"></script>
-  <script src="js/chart.js?v=20260927a"></script>
-  <script src="js/builder.js?v=20260927a"></script>
-  <script src="js/midilib.js?v=20260927a"></script>
-  <script src="js/midibuilder.js?v=20260927a"></script>
-  <script src="js/player.js?v=20260927a"></script>
-  <script src="js/main.js?v=20260927a"></script>
+  <script src="js/theory.js?v=20260929b"></script>
+  <script src="js/audio.js?v=20260929b"></script>
+  <script src="js/staff.js?v=20260929b"></script>
+  <script src="js/ratings.js?v=20260929b"></script>
+  <script src="js/fingering.js?v=20260929b"></script>
+  <script src="js/songs.js?v=20260929b"></script>
+  <script src="js/scales.js?v=20260929b"></script>
+  <script src="js/learner.js?v=20260929b"></script>
+  <script src="js/chart.js?v=20260929b"></script>
+  <script src="js/builder.js?v=20260929b"></script>
+  <script src="js/midilib.js?v=20260929b"></script>
+  <script src="js/midibuilder.js?v=20260929b"></script>
+  <script src="js/player.js?v=20260929b"></script>
+  <script src="js/main.js?v=20260929b"></script>
 </body>
 </html>

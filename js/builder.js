@@ -13,14 +13,22 @@ window.SaxBuilder = (() => {
   const DUR_WORD = { w: "whole", h: "half", q: "quarter", e: "eighth" };
   const DUR_STEPS = [["e", 0.5], ["q", 1], ["h", 2], ["w", 4]];
 
-  // Snap an arbitrary beat length to the nearest supported duration.
-  function nearestDur(beats) {
-    let best = "q", bestErr = Infinity;
-    for (const [d, b] of DUR_STEPS) {
+  // Length of an item in beats; a dot adds half again.
+  const itemBeats = it => BEATS[it.dur] * (it.dot ? 1.5 : 1);
+  const isEighth = it => !it.rest && it.dur === "e" && !it.dot;
+
+  // Snap an arbitrary beat length to the nearest supported length: {dur} or,
+  // when dots are allowed, {dur, dot:true}.
+  function snapBeats(beats, dots) {
+    let best = { dur: "q" }, bestErr = Infinity;
+    const cands = [];
+    for (const [d, b] of DUR_STEPS) cands.push([{ dur: d }, b]);
+    if (dots) for (const [d, b] of DUR_STEPS) cands.push([{ dur: d, dot: true }, b * 1.5]);
+    for (const [it, b] of cands) {
       const err = Math.abs(Math.log2(b) - Math.log2(beats)); // musical (ratio) distance
-      if (err < bestErr - 1e-9) { bestErr = err; best = d; }
+      if (err < bestErr - 1e-9) { bestErr = err; best = it; }
     }
-    return best;
+    return { ...best };
   }
 
   function savedTracks() {
@@ -44,6 +52,16 @@ window.SaxBuilder = (() => {
     let history = []; // snapshots of `track` taken before each change, for undo
     let tempoValue = 100; // used when there is no tempo slider in the DOM
     let copied = new Set(); // indices drawn with a green "already copied" band
+    let keyK = 0;                       // key signature: +n sharps / -n flats
+    let curDot = false, curTie = false; // tool state for notes added next
+    const FING_KEY = "saxtrainer.builderFingering";
+    let fingOn = true;                  // show the fingering panel (Track Builder tab)
+    try { fingOn = localStorage.getItem(FING_KEY) !== "0"; } catch (e) { /* default on */ }
+    const keyMap = () => T.keySig(keyK);
+    const fx = () => FIRST_X + Math.abs(keyK) * 10; // first note x (room for the key signature)
+    // a note is tied to the next one only if that next note has the same pitch
+    const tiedNext = i => { const a = track[i], b = track[i + 1]; return !!(a && b && a.tie && !a.rest && !b.rest && a.name === b.name); };
+    const tiedPrev = i => i > 0 && tiedNext(i - 1);
     let bpb = opts.beatsPerBar || 4; // beats per bar for barlines / bar navigation
 
     // Snapshot the track before a mutating action so Undo can restore it.
@@ -52,16 +70,18 @@ window.SaxBuilder = (() => {
       if (history.length > 200) history.shift();
     }
 
-    function widthFor() { return Math.max(1100, FIRST_X + (track.length + 2) * DX); }
+    function widthFor() { return Math.max(1100, fx() + (track.length + 2) * DX); }
 
+    // acc: "#" | "b" | "n" (explicit natural) | null (follow the key signature)
     function noteAt(step, acc) {
       // step is diatonic (0 = E4); derive letter/octave then apply accidental
       const diatonic = step + 30;
       const letter = T.LETTERS[((diatonic % 7) + 7) % 7];
       const octave = Math.floor(diatonic / 7);
+      const a = acc === "n" ? null : (acc || keyMap()[letter] || null);
       try {
         const inst = SaxInstrument.get();
-        const n = T.noteByName(letter + (acc || "") + octave);
+        const n = T.noteByName(letter + (a || "") + octave);
         if (n.midi < inst.low || n.midi > inst.high) return null;
         return n;
       } catch (e) { return null; }
@@ -74,35 +94,70 @@ window.SaxBuilder = (() => {
       svg.innerHTML = "";
       staff = ST.create(svg, { yE4: Y_E4, left: 16, right: width - 12 });
       staff.drawLines();
+      if (keyK) staff.drawKeySig(keyK);
       // "already copied" bands go under the notes
       for (const i of copied) {
         if (i < 0 || i >= track.length) continue;
         ST.el("rect", {
-          x: FIRST_X + i * DX - DX / 2 + 2, y: 30, width: DX - 4, height: 262, rx: 6,
+          x: fx() + i * DX - DX / 2 + 2, y: 30, width: DX - 4, height: 262, rx: 6,
           fill: "var(--good)", opacity: 0.18, class: "copied"
         }, svg);
       }
+      // pair up eighths that start on a beat so they can share a beam
+      const starts = []; let sb = 0;
+      for (const it of track) { starts.push(sb); sb += itemBeats(it); }
+      const stemUp = new Map(), pairs = [];
+      for (let i = 0; i + 1 < track.length; i++) {
+        if (isEighth(track[i]) && isEighth(track[i + 1]) && Math.abs(starts[i] - Math.round(starts[i])) < 1e-9) {
+          const s1 = T.noteByName(track[i].name).step, s2 = T.noteByName(track[i + 1].name).step;
+          const up = (s1 + s2) / 2 < 4;
+          stemUp.set(i, up); stemUp.set(i + 1, up); pairs.push(i);
+          i++;
+        }
+      }
+      const km = keyMap(), barAcc = new Map(); // accidentals already in force this bar
       let beatsAcc = 0;
       groups = track.map((item, i) => {
-        const x = FIRST_X + i * DX;
-        const g = item.rest
-          ? staff.drawRest(x, { dur: item.dur })
-          : staff.drawNote(T.noteByName(item.name), x, { dur: item.dur });
+        const x = fx() + i * DX;
+        let g;
+        if (item.rest) {
+          g = staff.drawRest(x, { dur: item.dur, dot: !!item.dot });
+        } else {
+          const n = T.noteByName(item.name), k = n.letter + n.octave;
+          const inForce = barAcc.has(k) ? barAcc.get(k) : (km[n.letter] || null);
+          const want = n.acc || null;
+          barAcc.set(k, want);
+          g = staff.drawNote(n, x, {
+            dur: item.dur, dot: !!item.dot, stemUp: stemUp.get(i),
+            showAcc: want === inForce ? null : (want || "n")
+          });
+        }
         g.dataset.index = i;
         g.style.cursor = "pointer";
         const before = beatsAcc;
-        beatsAcc += BEATS[item.dur];
-        // a barline after any note that ends on or past a bar boundary — so the
-        // drawn bars always agree with barIndices()' [start, start+bpb) windows
+        beatsAcc += itemBeats(item);
+        // a barline after any note that ends on or past a bar boundary, so the
+        // drawn bars always agree with the barIndices windows of bpb beats
         if (Math.floor(beatsAcc / bpb + 1e-9) > Math.floor(before / bpb + 1e-9) && i < track.length - 1) {
           staff.drawBarline(x + DX / 2);
+          barAcc.clear();
         }
         return g;
       });
-      // insertion marker at the next slot (edit mode only — that's where a
-      // click would drop the next note)
+      for (const i of pairs) {
+        staff.beam(groups[i], groups[i + 1], fx() + i * DX, fx() + (i + 1) * DX,
+          T.noteByName(track[i].name).step, T.noteByName(track[i + 1].name).step, stemUp.get(i));
+      }
+      for (let i = 0; i < track.length - 1; i++) {
+        if (!tiedNext(i)) continue;
+        const step = T.noteByName(track[i].name).step;
+        staff.drawTie(fx() + i * DX, fx() + (i + 1) * DX, step,
+          { up: stemUp.has(i) ? stemUp.get(i) : step < 4 });
+      }
+      // insertion marker at the next slot (edit mode only): where a click
+      // would drop the next note
       if (editMode) {
-        const nx = FIRST_X + track.length * DX;
+        const nx = fx() + track.length * DX;
         ST.el("line", {
           x1: nx, x2: nx, y1: staff.yOf(10), y2: staff.yOf(-4),
           stroke: "var(--accent)", "stroke-width": 1.5, "stroke-dasharray": "4 4", opacity: 0.6
@@ -112,6 +167,33 @@ window.SaxBuilder = (() => {
       if (selectedIdx >= track.length) selectedIdx = -1;
       if (selectedIdx >= 0 && groups[selectedIdx]) ST.setColor(groups[selectedIdx], "var(--good)");
       updateStats();
+      refreshFlags();
+      updateFingering(fingIdx());
+    }
+
+    // Reflect dot/tie state on their buttons: the selected note, else the tool.
+    function refreshFlags() {
+      const it = selectedIdx >= 0 ? track[selectedIdx] : null;
+      const d = el("dot"), t = el("tie");
+      if (d) d.classList.toggle("sel", it ? !!it.dot : curDot);
+      if (t) t.classList.toggle("sel", it ? tiedNext(selectedIdx) : curTie);
+    }
+
+    // ---- fingering panel (optional element; Track Builder tab only) ----
+    function fingIdx() {
+      return playing && playIdx >= 0 ? playIdx : (selectedIdx >= 0 ? selectedIdx : playIdx);
+    }
+    function updateFingering(idx) {
+      const panel = el("fing");
+      if (!panel) return;
+      panel.style.display = fingOn ? "" : "none";
+      if (!fingOn) return;
+      const nm = el("fing-name"), sv = el("fing-svg"), it = idx >= 0 ? track[idx] : null;
+      if (!it) { nm.textContent = "–"; sv.innerHTML = ""; return; }
+      if (it.rest) { nm.textContent = "(rest)"; sv.innerHTML = ""; return; }
+      const n = T.noteByName(it.name);
+      nm.textContent = n.name;
+      try { SaxFingering.render(sv, n.midi); } catch (e) { sv.innerHTML = ""; }
     }
 
     function updateStats() {
@@ -119,10 +201,10 @@ window.SaxBuilder = (() => {
       if (!st) return;
       if (selectedIdx >= 0 && track[selectedIdx]) {
         const it = track[selectedIdx];
-        st.textContent = `Selected: ${it.rest ? "rest" : it.name} (${DUR_WORD[it.dur]}) — note ${selectedIdx + 1} of ${track.length}`;
+        st.textContent = `Selected: ${it.rest ? "rest" : it.name} (${it.dot ? "dotted " : ""}${DUR_WORD[it.dur]}${tiedNext(selectedIdx) ? ", tied to next" : ""}) — note ${selectedIdx + 1} of ${track.length}`;
         return;
       }
-      const beats = track.reduce((s, it) => s + BEATS[it.dur], 0);
+      const beats = track.reduce((s, it) => s + itemBeats(it), 0);
       if (!track.length) {
         st.textContent = readOnly ? "No notes in this track"
           : editMode ? "Empty track — click on the staff to add your first note"
@@ -143,14 +225,21 @@ window.SaxBuilder = (() => {
         syncToolbar(it); // reflect this note's duration/accidental on the buttons
       }
       updateStats();
+      refreshFlags();
+      updateFingering(fingIdx());
       if (opts.onPosition) opts.onPosition(idx);
     }
 
-    // Highlight the toolbar duration/accidental buttons matching an item's state.
+    // Highlight the toolbar duration/accidental buttons matching an item.
+    // No accidental button is lit when the note simply follows the key signature.
     function syncToolbar(it) {
       all("durs button").forEach(x => x.classList.toggle("sel", x.dataset.dur === it.dur));
-      const acc = it.rest ? null : (T.noteByName(it.name).acc || null);
-      all("accs button").forEach(x => x.classList.toggle("sel", (x.dataset.acc || null) === acc));
+      let shown = null;
+      if (!it.rest) {
+        const n = T.noteByName(it.name), keyAcc = keyMap()[n.letter] || null;
+        shown = (n.acc || null) === keyAcc ? null : (n.acc || "n");
+      }
+      all("accs button").forEach(x => x.classList.toggle("sel", (x.dataset.acc || null) === shown));
     }
 
     function setMode(edit) {
@@ -186,7 +275,7 @@ window.SaxBuilder = (() => {
       if (ghostG) ghostG.remove();
       const n = noteAt(step, curAcc);
       if (!n) { ghostG = null; return; }
-      ghostG = staff.drawNote(n, FIRST_X + track.length * DX, { dur: curDur, ghost: true, color: "var(--accent)" });
+      ghostG = staff.drawNote(n, fx() + track.length * DX, { dur: curDur, dot: curDot, key: keyMap(), ghost: true, color: "var(--accent)" });
     }
 
     function onLeave() {
@@ -219,7 +308,12 @@ window.SaxBuilder = (() => {
       const n = noteAt(stepFromY(p.y), curAcc);
       if (!n) return;
       pushHistory();
-      track.push({ name: n.letter + (n.acc || "") + n.octave, dur: curDur });
+      const name = n.letter + (n.acc || "") + n.octave, prev = track[track.length - 1];
+      track.push({ name, dur: curDur, ...(curDot ? { dot: true } : {}) });
+      if (curTie) { // tie tool: join this note to the previous one if they match
+        if (prev && !prev.rest && prev.name === name) prev.tie = true;
+        curTie = false;
+      }
       A.playNote(n.midi, { dur: 0.3, vel: 0.5 });
       render();
       scrollToEnd();
@@ -231,7 +325,9 @@ window.SaxBuilder = (() => {
       const it = track[selectedIdx];
       if (!it || it.rest) return;
       const cur = T.noteByName(it.name);
-      const next = noteAt(cur.step + dir, cur.acc);
+      const keyAcc = keyMap()[cur.letter] || null;
+      const keep = (cur.acc || null) === keyAcc ? null : (cur.acc || "n"); // key-following notes keep following the key
+      const next = noteAt(cur.step + dir, keep);
       if (!next) return; // would leave the instrument's range
       pushHistory();
       it.name = next.letter + (next.acc || "") + next.octave;
@@ -253,7 +349,7 @@ window.SaxBuilder = (() => {
     function scrollToSelected() {
       const wrap = el("scroll");
       if (selectedIdx < 0 || !wrap) return;
-      const x = FIRST_X + selectedIdx * DX;
+      const x = fx() + selectedIdx * DX;
       wrap.scrollTo({ left: Math.max(0, x - wrap.clientWidth / 2), behavior: document.visibilityState === "visible" ? "smooth" : "auto" });
     }
 
@@ -282,12 +378,59 @@ window.SaxBuilder = (() => {
       scrollToSelected();
     }
 
+    // Dot: with a selection, toggle it on that item; otherwise toggle the tool
+    // that dots the next note you add.
+    function toggleDot() {
+      if (readOnly || playing) return;
+      const it = selectedIdx >= 0 ? track[selectedIdx] : null;
+      if (it) {
+        pushHistory();
+        if (it.dot) delete it.dot; else it.dot = true;
+        render();
+        if (!it.rest) A.playNote(T.noteByName(it.name).midi, { dur: 0.35, vel: 0.5 });
+        scrollToSelected();
+      } else {
+        curDot = !curDot;
+        refreshFlags();
+      }
+    }
+
+    // Tie: with a selection, join it to the next note (same pitch) or undo the
+    // tie; otherwise arm the tool so the next note added ties to the previous one.
+    function toggleTie() {
+      if (readOnly || playing) return;
+      const it = selectedIdx >= 0 ? track[selectedIdx] : null;
+      if (!it) { curTie = !curTie; refreshFlags(); return; }
+      if (it.rest) return;
+      if (tiedNext(selectedIdx)) {
+        pushHistory(); delete it.tie; render();
+      } else if (track[selectedIdx + 1] && !track[selectedIdx + 1].rest && track[selectedIdx + 1].name === it.name) {
+        pushHistory(); it.tie = true; render();
+      } else if (el("stats")) {
+        el("stats").textContent = "A tie joins two notes of the same pitch in a row. Select the first note and make sure the next one is the same pitch.";
+      }
+    }
+
+    function setKey(k) {
+      keyK = Math.max(-7, Math.min(7, Math.round(+k) || 0));
+      if (el("key")) el("key").value = String(keyK);
+      if (svg) render();
+    }
+
+    function toggleFingering() {
+      fingOn = !fingOn;
+      try { localStorage.setItem(FING_KEY, fingOn ? "1" : "0"); } catch (e) { /* not persisted */ }
+      const b = el("fing-toggle");
+      if (b) b.classList.toggle("sel", fingOn);
+      updateFingering(fingIdx());
+    }
+
     // Turn the selected note into a rest of the same length.
     function makeSelectedRest() {
       const it = track[selectedIdx];
       if (readOnly || !it || it.rest) return;
       pushHistory();
-      track[selectedIdx] = { rest: true, dur: it.dur };
+      track[selectedIdx] = { rest: true, dur: it.dur, ...(it.dot ? { dot: true } : {}) };
       render();
       scrollToSelected();
     }
@@ -300,7 +443,7 @@ window.SaxBuilder = (() => {
     function addRest() {
       if (readOnly || playing) return;
       pushHistory();
-      track.push({ rest: true, dur: curDur });
+      track.push({ rest: true, dur: curDur, ...(curDot ? { dot: true } : {}) });
       render();
       scrollToEnd();
     }
@@ -345,8 +488,11 @@ window.SaxBuilder = (() => {
       if (playing) stop();
       if (track.length && !readOnly) pushHistory();
       selectedIdx = -1; playIdx = -1; copied = new Set();
-      track = notes.map(([n, beats]) =>
-        n === null ? { rest: true, dur: nearestDur(beats) } : { name: n, dur: nearestDur(beats) });
+      keyK = 0; if (el("key")) el("key").value = "0";
+      track = notes.map(([n, beats]) => {
+        const len = snapBeats(beats, !readOnly); // editable copies keep dotted rhythms
+        return n === null ? { rest: true, ...len } : { name: n, ...len };
+      });
       if (tempo) setTempo(tempo);
       if (el("name") && name !== undefined) el("name").value = (name || "Untitled") + " (my version)";
       render();
@@ -363,8 +509,8 @@ window.SaxBuilder = (() => {
       const events = [];
       let beat = 0;
       for (let i = from; i < track.length; i++) {
-        events.push({ i, start: beat, end: beat + BEATS[track[i].dur] });
-        beat += BEATS[track[i].dur];
+        events.push({ i, start: beat, end: beat + itemBeats(track[i]), cont: i > from && tiedPrev(i) });
+        beat += itemBeats(track[i]);
       }
       playEvents = events; playNext = 0;
       const total = beat;
@@ -381,9 +527,11 @@ window.SaxBuilder = (() => {
           const at = playT0 + e.start * playSpb;
           if (at >= now + 1) break;
           const item = track[e.i];
-          if (!item.rest && at >= now - 0.05) {
+          if (!item.rest && !e.cont && at >= now - 0.05) {
             const n = T.noteByName(item.name);
-            A.playNote(n.midi, { dur: Math.max(0.15, BEATS[item.dur] * playSpb * 0.92), when: Math.max(0, at - now) });
+            let len = itemBeats(item);
+            for (let j = e.i; tiedNext(j); ) { j++; len += itemBeats(track[j]); } // ring through the tie
+            A.playNote(n.midi, { dur: Math.max(0.15, len * playSpb * 0.92), when: Math.max(0, at - now) });
           }
           playNext++;
         }
@@ -394,9 +542,10 @@ window.SaxBuilder = (() => {
           if (idx >= 0 && groups[idx]) {
             ST.setColor(groups[idx], "var(--accent)");
             playIdx = idx;
+            updateFingering(idx);
             const wrap = el("scroll");
             if (wrap) { // keep the sounding note in view, centred once past mid-screen
-              const x = FIRST_X + idx * DX;
+              const x = fx() + idx * DX;
               const want = Math.max(0, x - wrap.clientWidth / 2);
               if (Math.abs(wrap.scrollLeft - want) > DX) wrap.scrollLeft = want;
             }
@@ -440,7 +589,7 @@ window.SaxBuilder = (() => {
       const name = el("name") ? el("name").value.trim() : "";
       if (!name || !track.length) return;
       const all = savedTracks();
-      all[name] = { tempo: getTempo(), items: track };
+      all[name] = { tempo: getTempo(), key: keyK, items: track };
       localStorage.setItem(STORE_KEY, JSON.stringify(all));
       refreshLoadList();
       if (el("load")) el("load").value = name;
@@ -456,6 +605,8 @@ window.SaxBuilder = (() => {
       const t = allT[name];
       track = Array.isArray(t) ? t : t.items;
       if (!Array.isArray(t) && t.tempo) setTempo(t.tempo);
+      keyK = Array.isArray(t) ? 0 : Math.max(-7, Math.min(7, Math.round(+t.key) || 0));
+      if (el("key")) el("key").value = String(keyK);
       if (el("name")) el("name").value = name;
       render();
     }
@@ -474,12 +625,12 @@ window.SaxBuilder = (() => {
       let beat = 0, start = 0;
       for (let i = 0; i < track.length; i++) {
         if (i === idx) { start = Math.floor(beat / bpb + 1e-9) * bpb; break; }
-        beat += BEATS[track[i].dur];
+        beat += itemBeats(track[i]);
       }
       const out = []; beat = 0;
       for (let i = 0; i < track.length; i++) {
         if (beat >= start - 1e-9 && beat < start + bpb - 1e-9) out.push(i);
-        beat += BEATS[track[i].dur];
+        beat += itemBeats(track[i]);
         if (beat >= start + bpb - 1e-9) break;
       }
       return out;
@@ -499,7 +650,7 @@ window.SaxBuilder = (() => {
     // ---- time-position helpers (beats are cumulative, as drawn) ----
     function beatOf(idx) {
       let b = 0;
-      for (let i = 0; i < Math.min(idx, track.length); i++) b += BEATS[track[i].dur];
+      for (let i = 0; i < Math.min(idx, track.length); i++) b += itemBeats(track[i]);
       return b;
     }
     // Index of the item sounding at `beat` (last item if beyond the end).
@@ -507,7 +658,7 @@ window.SaxBuilder = (() => {
       if (!track.length) return -1;
       let b = 0;
       for (let i = 0; i < track.length; i++) {
-        const d = BEATS[track[i].dur];
+        const d = itemBeats(track[i]);
         if (beat < b + d) return i;
         b += d;
       }
@@ -528,7 +679,7 @@ window.SaxBuilder = (() => {
       for (let i = 0; i < track.length; i++) {
         const bar = Math.floor(b / bpb + 1e-9);
         if (bar === barNo) out.push(i); else if (bar > barNo) break;
-        b += BEATS[track[i].dur];
+        b += itemBeats(track[i]);
       }
       return out;
     }
@@ -547,6 +698,8 @@ window.SaxBuilder = (() => {
         (a.tagName === "INPUT" && !["range", "checkbox", "radio", "button", "submit"].includes(a.type)));
       if (typing) return;
       if (ev.key === "c" || ev.key === "C") { setMode(!editMode); ev.preventDefault(); return; }
+      if (ev.key === ".") { toggleDot(); ev.preventDefault(); return; }
+      if (ev.key === "t" || ev.key === "T") { toggleTie(); ev.preventDefault(); return; }
       if (selectedIdx < 0) return;
       if (ev.key === "ArrowUp") { moveSelected(1); ev.preventDefault(); }
       else if (ev.key === "ArrowDown") { moveSelected(-1); ev.preventDefault(); }
@@ -569,14 +722,28 @@ window.SaxBuilder = (() => {
         }));
       all("accs button").forEach(b =>
         b.addEventListener("click", () => {
-          curAcc = b.dataset.acc || null;
-          all("accs button").forEach(x => x.classList.toggle("sel", x === b));
+          const want = b.dataset.acc || null;
+          curAcc = curAcc === want ? null : want; // click again: follow the key signature
+          all("accs button").forEach(x => x.classList.toggle("sel", (x.dataset.acc || null) === curAcc));
           if (selectedIdx >= 0) setSelectedAcc(curAcc); // re-spell the selected note
         }));
 
       const on = (id, evt, fn) => { const e = el(id); if (e) e.addEventListener(evt, fn); };
       on("mode", "click", () => setMode(!editMode));
       on("rest", "click", () => { if (selectedIdx >= 0) makeSelectedRest(); else addRest(); });
+      on("dot", "click", () => { toggleDot(); el("dot").blur(); });
+      on("tie", "click", () => { toggleTie(); el("tie").blur(); });
+      on("fing-toggle", "click", () => { toggleFingering(); el("fing-toggle").blur(); });
+      if (el("fing-toggle")) el("fing-toggle").classList.toggle("sel", fingOn);
+      if (el("key")) {
+        for (const [k, label] of T.KEYS) {
+          const o = document.createElement("option");
+          o.value = String(k); o.textContent = label;
+          el("key").appendChild(o);
+        }
+        el("key").value = "0";
+        el("key").addEventListener("change", () => { setKey(el("key").value); el("key").blur(); });
+      }
       on("undo", "click", undo);
       on("clear", "click", clearAll);
       on("play", "click", () => playing ? stop() : play());
@@ -615,7 +782,7 @@ window.SaxBuilder = (() => {
       beatOf, indexAtBeat, currentBeat, currentIndex, barIndicesAt, select, barPos, setBeatsPerBar,
       beatsPerBar: () => bpb,
       getItems: () => track.map(it => ({ ...it })),
-      getTempo, setTempo,
+      getTempo, setTempo, setKey, getKey: () => keyK,
       activate() { active = true; refreshLoadList(); },
       deactivate() { active = false; if (playing) stop(); }
     };

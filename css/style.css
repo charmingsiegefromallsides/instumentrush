@@ -286,7 +286,8 @@ input[type=range] { accent-color: var(--accent); }
 .sum-line { color: #cdd2e4; }
 
 @media (max-width: 820px) {
-  .chart-layout { flex-direction: column; }
+  .chart-layout { flex-direction: column; align-items: stretch; }
+  .chart-left { width: 100%; flex: none; }
   .fing-panel { width: 100%; }
 }
 
@@ -303,3 +304,9 @@ input[type=range] { accent-color: var(--accent); }
 .song-card .card-stars { margin: -2px 0 2px; }
 .mb-row .card-stars { flex: none; }
 .tempo-label { white-space: nowrap; }
+
+/* ---------- builder: fingering panel + toolbar extras ---------- */
+#tb-fing { align-self: flex-start; }
+#tb-fing svg { min-height: 120px; }
+.tool-group select { height: 30px; padding: 2px 8px; font-size: 0.85rem; }
+

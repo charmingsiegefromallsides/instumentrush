@@ -41,5 +41,22 @@ window.SaxTheory = (() => {
 
   const freq = midi => 440 * Math.pow(2, (midi - 69) / 12);
 
-  return { LETTERS, ACC_GLYPH, noteFromMidi, noteByName, CHROMATIC, NATURALS, freq, RANGE_LOW, RANGE_HIGH };
+  // Key signatures: k = number of sharps (positive) or flats (negative).
+  const KEYS = [
+    [-7, "C♭ major · 7♭"], [-6, "G♭ major · 6♭"], [-5, "D♭ major · 5♭"], [-4, "A♭ major · 4♭"],
+    [-3, "E♭ major · 3♭"], [-2, "B♭ major · 2♭"], [-1, "F major · 1♭"], [0, "C major · no sharps or flats"],
+    [1, "G major · 1♯"], [2, "D major · 2♯"], [3, "A major · 3♯"], [4, "E major · 4♯"],
+    [5, "B major · 5♯"], [6, "F♯ major · 6♯"], [7, "C♯ major · 7♯"]
+  ];
+  const SHARP_ORDER = ["F", "C", "G", "D", "A", "E", "B"];
+  const FLAT_ORDER = ["B", "E", "A", "D", "G", "C", "F"];
+  // letter -> "#" | "b" for the letters the key signature alters
+  function keySig(k) {
+    const m = {};
+    if (k > 0) SHARP_ORDER.slice(0, k).forEach(l => { m[l] = "#"; });
+    else if (k < 0) FLAT_ORDER.slice(0, -k).forEach(l => { m[l] = "b"; });
+    return m;
+  }
+
+  return { LETTERS, ACC_GLYPH, noteFromMidi, noteByName, CHROMATIC, NATURALS, freq, RANGE_LOW, RANGE_HIGH, KEYS, keySig };
 })();

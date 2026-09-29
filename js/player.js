@@ -26,6 +26,19 @@ window.SaxPlayer = (() => {
   let filterLevel = "", searchText = "";
   const DUR_BEATS = { w: 4, h: 2, q: 1, e: 0.5 };
 
+  // Builder items -> [name|null, beats]; dots lengthen, and a tie merges a note into the previous one.
+  function itemsToNotes(items) {
+    const beatsOf = it => (DUR_BEATS[it.dur] || 1) * (it.dot ? 1.5 : 1);
+    const notes = [];
+    items.forEach((it, i) => {
+      const prev = items[i - 1];
+      if (it.rest) notes.push([null, beatsOf(it)]);
+      else if (prev && prev.tie && !prev.rest && prev.name === it.name && notes.length) notes[notes.length - 1][1] += beatsOf(it);
+      else notes.push([String(it.name), beatsOf(it)]);
+    });
+    return notes;
+  }
+
   function userSongs() {
     let saved;
     try { saved = JSON.parse(localStorage.getItem("saxtrainer.tracks") || "{}"); }
@@ -39,7 +52,7 @@ window.SaxPlayer = (() => {
         out.push({
           id: "user:" + name, title: String(name),
           tempo: Math.max(30, Math.min(300, tempo)), meter: 4, level: "My Tracks",
-          notes: items.map(it => it.rest ? [null, DUR_BEATS[it.dur] || 1] : [String(it.name), DUR_BEATS[it.dur] || 1])
+          notes: itemsToNotes(items)
         });
       } catch (e) { /* skip bad entry */ }
     }
@@ -75,6 +88,17 @@ window.SaxPlayer = (() => {
     if (!shown.length) wrap.innerHTML = `<p class="dim">No songs match — try another search or category.</p>`;
   }
 
+  // Nearest note glyph (with optional dot) for a length in beats.
+  const GLYPHS = [[6, "w", true], [4, "w", false], [3, "h", true], [2, "h", false], [1.5, "q", true], [1, "q", false], [0.75, "e", true], [0.5, "e", false]];
+  function glyphFor(beats) {
+    let best = GLYPHS[GLYPHS.length - 1], err = Infinity;
+    for (const g of GLYPHS) {
+      const e = Math.abs(Math.log2(g[0]) - Math.log2(Math.max(beats, 0.25)));
+      if (e < err - 1e-9) { err = e; best = g; }
+    }
+    return { dur: best[1], dot: best[2] };
+  }
+
   // ---------- shared staff rendering of a song ----------
   function renderSongStaff(svg, s, tl) {
     const width = FIRST_X + 60 + tl.total * PX_PER_BEAT;
@@ -90,9 +114,9 @@ window.SaxPlayer = (() => {
     }
     const groups = tl.events.map(ev => {
       const x = FIRST_X + ev.start * PX_PER_BEAT;
-      const dur = ev.beats >= 4 ? "w" : ev.beats >= 2 ? "h" : ev.beats >= 1 ? "q" : "e";
-      if (!ev.note) return staff.drawRest(x, { dur, parent: layer });
-      return staff.drawNote(ev.note, x, { dur, parent: layer });
+      const { dur, dot } = glyphFor(ev.beats);
+      if (!ev.note) return staff.drawRest(x, { dur, dot, parent: layer });
+      return staff.drawNote(ev.note, x, { dur, dot, parent: layer });
     });
     return { staff, layer, groups, width };
   }
