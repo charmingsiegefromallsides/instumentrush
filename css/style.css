@@ -310,3 +310,8 @@ input[type=range] { accent-color: var(--accent); }
 #tb-fing svg { min-height: 120px; }
 .tool-group select { height: 30px; padding: 2px 8px; font-size: 0.85rem; }
 
+/* ---------- note letters inside noteheads (shared toggle) ---------- */
+.inlabel { visibility: hidden; pointer-events: none; user-select: none; -webkit-user-select: none; }
+html.show-letters .inlabel { visibility: visible; }
+.btn[data-letters-toggle].sel, .tool-group button[data-letters-toggle].sel { background: var(--accent); border-color: var(--accent); color: #fff; }
+

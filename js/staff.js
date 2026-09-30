@@ -69,7 +69,8 @@ window.SaxStaff = (() => {
     // implies and shows a natural where the note cancels one.
     // showAcc (optional) overrides which accidental is printed: "#", "b", "n" or null.
     // stemUp (optional) forces the stem direction (used for beamed pairs).
-    function drawNote(note, x, { dur = "q", dot = false, key = null, showAcc, stemUp, color = "var(--ink)", parent = svg, ghost = false } = {}) {
+    // letter:false skips the (hidden until toggled) note letter inside the head.
+    function drawNote(note, x, { dur = "q", dot = false, key = null, showAcc, stemUp, letter = true, color = "var(--ink)", parent = svg, ghost = false } = {}) {
       const g = el("g", { class: "note", "data-dur": dur }, parent);
       if (ghost) g.setAttribute("opacity", "0.45");
       const y = yOf(note.step);
@@ -122,6 +123,18 @@ window.SaxStaff = (() => {
           el("path", { d, fill: color, class: "flag" }, g);
         }
       }
+      if (letter) {
+        // Learning aid: the note name inside the head. Always drawn, shown only
+        // while the shared "letters" setting is on (see html.show-letters in CSS).
+        // Filled heads (quarter, eighth) get light text; hollow ones (whole, half) dark.
+        const hollow = dur === "w" || dur === "h";
+        const t = el("text", {
+          x, y: y + 0.5, "text-anchor": "middle", "dominant-baseline": "central",
+          "font-size": dur === "w" ? 13 : 11.5, "font-weight": 800, class: "inlabel",
+          fill: hollow ? "var(--ink)" : "var(--paper)", "font-family": "'Segoe UI',system-ui,sans-serif"
+        }, g);
+        t.textContent = note.letter;
+      }
       return g;
     }
 
@@ -171,6 +184,19 @@ window.SaxStaff = (() => {
     return { svg, el, yOf, drawLines, drawKeySig, drawNote, drawRest, drawBarline, drawTie, beam, ledgerSteps, left, right, yE4 };
   }
 
+  // ---- shared "show note letters" setting (same key Note Rush always used) ----
+  const LETTERS_KEY = "saxtrainer.noteLabels";
+  const letterListeners = [];
+  let lettersOn = false;
+  try { lettersOn = localStorage.getItem(LETTERS_KEY) === "1"; } catch (e) { /* default off */ }
+  document.documentElement.classList.toggle("show-letters", lettersOn);
+  function setLetters(on) {
+    lettersOn = !!on;
+    document.documentElement.classList.toggle("show-letters", lettersOn);
+    try { localStorage.setItem(LETTERS_KEY, lettersOn ? "1" : "0"); } catch (e) { /* not persisted */ }
+    letterListeners.forEach(f => { try { f(lettersOn); } catch (e) { /* ignore */ } });
+  }
+
   // Recolor a note group produced by drawNote
   function setColor(g, color) {
     const head = g.querySelector(".head");
@@ -185,5 +211,8 @@ window.SaxStaff = (() => {
     }
   }
 
-  return { create, el, setColor, HALF, NS };
+  return {
+    create, el, setColor, HALF, NS,
+    lettersOn: () => lettersOn, setLetters, onLettersChange: f => letterListeners.push(f)
+  };
 })();

@@ -38,6 +38,21 @@
     b.addEventListener("click", () => switchTab(b.dataset.tab)));
   window.addEventListener("hashchange", () => switchTab(location.hash.slice(1)));
 
+  // ---- shared "show note letters" toggle (any element with data-letters-toggle) ----
+  const letterToggles = [...document.querySelectorAll("[data-letters-toggle]")];
+  function syncLetterToggles(on) {
+    letterToggles.forEach(t => {
+      if (t.type === "checkbox") t.checked = on;
+      else t.classList.toggle("sel", on);
+    });
+  }
+  letterToggles.forEach(t => {
+    if (t.type === "checkbox") t.addEventListener("change", () => SaxStaff.setLetters(t.checked));
+    else t.addEventListener("click", () => { SaxStaff.setLetters(!SaxStaff.lettersOn()); t.blur(); }); // blur keeps Space/arrows working
+  });
+  SaxStaff.onLettersChange(syncLetterToggles);
+  syncLetterToggles(SaxStaff.lettersOn());
+
   // ---- instrument switcher ----
   const INSTRUMENT_NAMES = { altosax: "alto saxophone", trumpet: "trumpet", guitar: "guitar" };
   const BRANDS = {

@@ -28,7 +28,7 @@ window.SaxLearner = (() => {
     staff.drawLines();
     groups = notes.map((n, i) => {
       const x = FIRST_X + i * NOTE_DX;
-      const g = staff.drawNote(n, x, { dur: "w" });
+      const g = staff.drawNote(n, x, { dur: "w", letter: false }); // Note Rush has its own label above the head
       ST.el("path", {
         d: `M ${x - 8} 296 L ${x + 8} 296 L ${x} 282 Z`,
         fill: "var(--accent)", class: "caret", visibility: "hidden"
@@ -102,7 +102,6 @@ window.SaxLearner = (() => {
     });
     const cb = $("ln-labels");
     if (cb) cb.checked = on;
-    try { localStorage.setItem("saxtrainer.noteLabels", on ? "1" : "0"); } catch (e) {}
   }
 
   function answer(letter) {
@@ -179,9 +178,10 @@ window.SaxLearner = (() => {
     SaxInstrument.onChange(() => newRound());
     const cb = $("ln-labels");
     if (cb) {
-      labelsOn = localStorage.getItem("saxtrainer.noteLabels") === "1";
+      labelsOn = ST.lettersOn();
       cb.checked = labelsOn;
-      cb.addEventListener("change", () => setLabels(cb.checked));
+      cb.addEventListener("change", () => ST.setLetters(cb.checked)); // shared by every tab
+      ST.onLettersChange(on => setLabels(on));
     }
     newRound();
     updateScoreboard(false);
